@@ -3,6 +3,8 @@
  * Description: The base project that can be used in the Arduino environment using the ZX2D10GE01R-V4848 device
  * Author: Eric Nam
  * Date: 03-18-2023
+ * Custom by PhuongNT.
+ * Last Change: 21-07-2023
  */
 
 // ** Prerequisites **
@@ -25,8 +27,8 @@
 #include <ui.h>
 #include <WiFiManager.h>
 #include <ESPmDNS.h>
-// #include <WiFiClientSecure.h>
-// #include <PubSubClient.h>
+#include <WiFiClientSecure.h>
+#include <PubSubClient.h>
 
 #include "esp_log.h"
 
@@ -38,13 +40,48 @@
 #define SERVICE_PROTOCOL "tcp"
 #define SERVICE_PORT 5600
 
+#define ADDRESS "172.16.100.137"
+int PORT = 38883;
+
+const char *MQTT_USER = "component"; // leave blank if no credentials used
+const char *MQTT_PASS = " "; // leave blank if no credentials used
+
+const char *sw1topic = "component/bluetooth/control";
+
+String btnStatus1 = "OFF";
+
 WiFiManager wm;
 bool res;
 
-// WiFiClientSecure  net;
-// PubSubClient      client(net);
+WiFiClientSecure  net;
+PubSubClient      client(net);
 
 char TAG[] = "Main";
+
+const char local_root_ca[] PROGMEM = R"=====(
+-----BEGIN CERTIFICATE-----
+MIIDqTCCApGgAwIBAgIJAK7m4E783cWuMA0GCSqGSIb3DQEBCwUAMGsxCzAJBgNV
+BAYTAlZOMQswCQYDVQQIDAJITjELMAkGA1UEBwwCSE4xDTALBgNVBAoMBExVTUkx
+CzAJBgNVBAsMAlJEMQ4wDAYDVQQDDAVsb2NhbDEWMBQGCSqGSIb3DQEJARYHYWJj
+QDEyMzAeFw0xOTA5MjMxMDU0NDZaFw0yOTA5MjAxMDU0NDZaMGsxCzAJBgNVBAYT
+AlZOMQswCQYDVQQIDAJITjELMAkGA1UEBwwCSE4xDTALBgNVBAoMBExVTUkxCzAJ
+BgNVBAsMAlJEMQ4wDAYDVQQDDAVsb2NhbDEWMBQGCSqGSIb3DQEJARYHYWJjQDEy
+MzCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBALoCzS2fxY3waRvIhewR
+BIyBgkFQlagZYV7CGV0xorxHtjJs3+Q4nGxn/Xvl2dF4HE3WstJ+1JcSLYuLgpB3
+Z9es68jvlCWX4zIa8Gne27mQSncdTuRV3K038RCKD8Ms00f1xd7cQFNZCHxPSdlV
+TXydu4nXwsL8FAzOUXiHB7KT6s2F3JEPqhn9pgNGe7ciQZTfdTSEQPJ5w2wWrnnQ
+7FccMxQmyyJNMfM3cwv26yhEFTIIKX9/9JCbqe75QIyeAxoTAUmJWtMvBBjT+HJ0
+daGM1N60f6PsBYI4Y5o+NUsJa1ahPNvX44M4q/FxhbAyYOruztMyJFyYpiyxZpkO
+8QsCAwEAAaNQME4wHQYDVR0OBBYEFO6WUjahqnRNCyzA54s78gae3LTsMB8GA1Ud
+IwQYMBaAFO6WUjahqnRNCyzA54s78gae3LTsMAwGA1UdEwQFMAMBAf8wDQYJKoZI
+hvcNAQELBQADggEBAF1ElC5P2hDpnaOiFarHkkVvvwrdry3H/jCckdffkUZFoAqa
+AmeY1Zv4czcEVNDdkGh5nBSBlXxySvpR16Y6HM+4DlBlhv1FuBgR+LdHIU1jH86u
+GNFX/Fq/jMv4rxBdJP9dgWnMW2vAnucU1DHqSgDD2TDFrvuz5EJADh73FKByYG7a
+nVI0Ke+huGvqVv9ynmHBmWE1J4DjGD08IPypgTiS7GkRG3V/KpLpyV2M9FEAbmeP
+KENRFSPMPeyRyfzitR98wTtsORlF4I1+fYcPGSh0pQK1mK1X1bI/BWmtnRMqBSXD
+Eou01zV/f6o0PDqrnMlYhFi5gTg2bbqLYmLFgyw=
+-----END CERTIFICATE-----
+)=====";
 
 Arduino_DataBus *bus = new Arduino_SWSPI(
   GFX_NOT_DEFINED /* DC */, 21 /* CS */,
@@ -102,9 +139,49 @@ void encoder_read(lv_indev_drv_t *drv, lv_indev_data_t *data) {
   }
 }
 
+void connectBroker()
+{
+  while(!client.connected())
+  {
+    ESP_LOGE(TAG, "Attemping MQTT connection...");
+    String clientId = "esp32-s3-";
+    clientId += String(random(0xffff), HEX);
+    if(client.connect(clientId.c_str(), MQTT_USER, MQTT_PASS))
+    {
+      ESP_LOGE(TAG, "Connected");
+      client.subscribe(sw1topic);
+      //client.subscribe(sw2topic);
+    }
+    else
+    {
+      Serial.print("failed, rc=");
+      Serial.print(client.state());
+      Serial.println("try again in 2 seconds");
+      delay(200);
+    }
+  }
+}
+
+void Callback(char* topic, byte* payload, unsigned int length) {
+  char status[20];
+  for (int i = 0; i < length; i++) {
+    status[i] = payload[i];
+  }
+  if(String(topic == sw1topic))
+  {
+    if(String(status) == "OFF")
+    {
+        ESP_LOGE(TAG, "OFF");
+    }
+    else if(String(status) == "ON")
+    {
+        ESP_LOGE(TAG, "ON");
+    }
+  }
+}
+
 void setup() {
   Serial.begin(115200);
-  Serial.println("test");
 
   gfx->begin();
   gfx->fillScreen(BLACK);
@@ -160,13 +237,27 @@ void setup() {
   mDNSService();
   init_lv_group();
   ui_init();
+  net.setInsecure();
+  client.setKeepAlive(60);
+  net.setCACert(local_root_ca);
+  client.setServer(ADDRESS, PORT);
+  client.setCallback(Callback);
+  connectBroker();
 }
-
 
 void loop() {
   lv_timer_handler(); /* let the GUI do its work */
+
+  if(!client.connected())
+  {
+    client.setKeepAlive(60); // setting keep alive to 60 seconds
+    connectBroker();
+  }
+  else{
+    client.loop();
+  }
+
   delay(5);
-  
 }
 
 void init_lv_group() {
@@ -198,9 +289,9 @@ void ui_event_resetWifi(lv_event_t * e)
 
 void DemandWifi()
 {
-  wm.setConfigPortalTimeout(120);
+  wm.setConfigPortalTimeout(300); //set timeout 300s
  
-  if (!wm.startConfigPortal("OnDemandAP")) {
+  if (!wm.startConfigPortal("OnDemandAP","LumiVn@2023")) {
     delay(5000);
     MDNS.begin("esp32");
   }
@@ -245,4 +336,26 @@ void mDNSService()
       ESP_LOGE(TAG, "---------------");
     }
   }
+}
+
+void ui_event_button3(lv_event_t * e)
+{
+    lv_event_code_t event_code = lv_event_get_code(e);
+    lv_obj_t * target = lv_event_get_target(e);
+    if(event_code == LV_EVENT_VALUE_CHANGED &&  lv_obj_has_state(target, LV_STATE_CHECKED)) {
+      if(btnStatus1 = "OFF")
+      {
+        client.publish(sw1topic, "ON");
+        btnStatus1 = "ON";
+        ESP_LOGE(TAG, "button ON");
+      }
+    }
+    if(event_code == LV_EVENT_VALUE_CHANGED &&  !lv_obj_has_state(target, LV_STATE_CHECKED)) {
+      if(btnStatus1 == "ON")
+      {
+        client.publish(sw1topic, "OFF");
+        btnStatus1 = "OFF";
+        ESP_LOGE(TAG, "button OFF");
+      }
+    }
 }

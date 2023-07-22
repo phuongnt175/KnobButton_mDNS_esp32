@@ -3,5 +3,5 @@
         "random": "cpp",
         "regex": "cpp"
     },
-    "cmake.sourceDirectory": "C:/Users/admin1/Documents/PlatformIO/Projects/230718-110108-esp32s3box/lib/ui/src"
+    "cmake.sourceDirectory": "C:/Users/admin1/Documents/PlatformIO/Projects/knobTest/lib/ui/src"
 }

@@ -16,6 +16,7 @@ lv_obj_t * ui_Image1;
 
 // SCREEN: ui_Screen2
 void ui_Screen2_screen_init(void);
+void ui_event_button3(lv_event_t * e);
 lv_obj_t * ui_Screen2;
 lv_obj_t * ui_Button3;
 lv_obj_t * ui_Image3;

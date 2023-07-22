@@ -94,5 +94,6 @@ void ui_Screen2_screen_init(void)
     lv_obj_set_style_bg_opa(ui_resetWifi, 100, LV_STATE_PRESSED);
 
     lv_obj_add_event_cb(ui_resetWifi, ui_event_resetWifi, LV_EVENT_ALL, NULL);
+    lv_obj_add_event_cb(ui_Button3, ui_event_button3, LV_EVENT_ALL, NULL);
 
 }

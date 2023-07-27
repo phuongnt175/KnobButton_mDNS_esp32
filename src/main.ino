@@ -34,6 +34,7 @@
 #include <WiFiClientSecure.h>
 #include <PubSubClient.h>
 #include "esp_log.h"
+#include <FastLED.h>
 
 /******************************************************************************/
 /*                     PRIVATE TYPES and DEFINITIONS                         */
@@ -41,6 +42,10 @@
 #define ECO_O(y) (y > 0) ? -1 : 1
 #define ECO_STEP(x) x ? ECO_O(x) : 0
 #define GFX_BL 38
+
+#define LED_PIN 4
+#define LED_NUM 13
+CRGB leds[LED_NUM];
 
 #define SERVICE_NAME "lumismarthome"
 #define SERVICE_PROTOCOL "tcp"
@@ -58,7 +63,10 @@
 /******************************************************************************/
 const char *MQTT_USER = "component"; // leave blank if no credentials used
 const char *MQTT_PASS = " "; // leave blank if no credentials used
-const char *sw1topic = "component/bluetooth/control";
+const char *sw1topic = "component/sw1";
+const char *sw2topic = "component/sw2";
+const char *sw3topic = "component/sw3";
+const char *sw4topic = "component/sw4";
 
 WiFiManager wm;
 WiFiClientSecure  net;
@@ -67,6 +75,9 @@ PubSubClient      client(net);
 int PORT = 38883;
 bool res;
 String btnStatus1 = "OFF";
+String btnStatus2 = "OFF";
+String btnStatus3 = "OFF";
+String btnStatus4 = "OFF";
 
 static button_t *g_btn;
 static uint32_t screenWidth;
@@ -172,7 +183,9 @@ void connectBroker()
     {
       ESP_LOGE(TAG, "Connected");
       client.subscribe(sw1topic);
-      //client.subscribe(sw2topic);
+      client.subscribe(sw2topic);
+      client.subscribe(sw3topic);
+      client.subscribe(sw4topic);
     }
     else
     {
@@ -184,43 +197,59 @@ void connectBroker()
   }
 }
 
+void SubCallback(lv_obj_t *ui, String Message, String btnStatus)
+{
+  if(Message == "ON")
+  {
+    btnStatus = "ON";
+    if(lv_obj_get_state(ui) == 6 || lv_obj_get_state(ui) == 0)
+    {
+      _ui_state_modify(ui, LV_STATE_CHECKED, 2);// _UI_STATE_MODIFY_TOGGLE
+    }
+    ESP_LOGE(TAG, "-------------------------------------------------------------");
+  }
+  else if(Message == "OFF")
+  {
+    btnStatus = "OFF";
+    _ui_state_modify(ui, LV_STATE_CHECKED, 1);// _UI_STATE_MODIFY_TOGGLE
+    ESP_LOGE(TAG, "-------------------------------------------------------------");
+  }
+}
+
 void Callback(char* topic, byte* payload, unsigned int length) {
 
   payload[length] = '\0'; //NULL terminator used to terminate the char array
   String message = (char*)payload;
+  ESP_LOGE(TAG, "%s", message);
   if(String(topic) == sw1topic)
   {
-    ESP_LOGE(TAG,"topic1");
-    if(message == "ON")
-    {
-      ESP_LOGE(TAG, "Btn status: %d", lv_obj_get_state(ui_Button3));
-      btnStatus1 = "ON";
-      if(lv_obj_get_state(ui_Button3) == 6)
-      {
-        _ui_state_modify(ui_Button3, LV_STATE_CHECKED, 2);// _UI_STATE_MODIFY_TOGGLE
-        ESP_LOGE(TAG, "Btn status: %d", lv_obj_get_state(ui_Button3));
-        ESP_LOGE(TAG, "ON");
-      }
-    }
-    else if(message == "OFF")
-    {
-      btnStatus1 = "OFF";
-      ESP_LOGE(TAG, "Btn status: %d", lv_obj_get_state(ui_Button3));
-      _ui_state_modify(ui_Button3, LV_STATE_CHECKED, 1);// _UI_STATE_MODIFY_TOGGLE
-      ESP_LOGE(TAG, "Btn status: %d", lv_obj_get_state(ui_Button3));
-      ESP_LOGE(TAG, "OFF");
-    }
+    SubCallback(ui_button1, message, btnStatus1);
+  }
+  if(String(topic) == sw2topic)
+  {
+    SubCallback(ui_button2, message, btnStatus2);
+  }
+  if(String(topic) == sw3topic)
+  {
+    SubCallback(ui_button3, message, btnStatus3);
+  }
+  if(String(topic) == sw4topic)
+  {
+    SubCallback(ui_button4, message, btnStatus4);
   }
 }
 
 void setup() {
   Serial.begin(115200);
 
-  gfx->begin();
+  gfx->begin(-1);
   gfx->fillScreen(BLACK);
 
   pinMode(GFX_BL, OUTPUT);
   digitalWrite(GFX_BL, HIGH);
+
+  FastLED.addLeds<NEOPIXEL, LED_PIN>(leds, LED_NUM);
+  FastLED.showColor(CHSV(64, 255, 255));
 
   lv_init();
 
@@ -258,6 +287,10 @@ void setup() {
     indev_drv.type = LV_INDEV_TYPE_ENCODER;
     lv_indev_drv_register(&indev_drv);
   }
+
+  init_lv_group();
+  ui_init();
+
   WiFi.mode(WIFI_STA);
   res = wm.autoConnect("KnobButton", "LumiVn@2023");
 
@@ -270,10 +303,6 @@ void setup() {
   }
 
   mDNSService();
-
-  init_lv_group();
-  ui_init();
-
   net.setInsecure();
   client.setKeepAlive(60);
   net.setCACert(local_root_ca);
@@ -283,8 +312,8 @@ void setup() {
 }
 
 void loop() {
+  
   lv_timer_handler(); /* let the GUI do its work */
-
   if(!client.connected())
   {
     client.setKeepAlive(60); // setting keep alive to 60 seconds
@@ -293,7 +322,6 @@ void loop() {
   else{
     client.loop();
   }
-  //ESP_LOGE(TAG, "%d", lv_obj_get_state(ui_Button3));
   delay(5);
 }
 
@@ -307,7 +335,6 @@ void init_lv_group() {
     if (!cur_drv) {
       break;
     }
-
     if (cur_drv->driver->type == LV_INDEV_TYPE_ENCODER) {
       lv_indev_set_group(cur_drv, lv_group);
     }
@@ -316,18 +343,17 @@ void init_lv_group() {
 
 void ui_event_resetWifi(lv_event_t * e)
 {
-    lv_event_code_t event_code = lv_event_get_code(e);
-    lv_obj_t * target = lv_event_get_target(e);
-    if(event_code == LV_EVENT_CLICKED) //detect clicked, run the DemandWiFi function
-    {
-        DemandWifi();
-    }
+  lv_event_code_t event_code = lv_event_get_code(e);
+  lv_obj_t * target = lv_event_get_target(e);
+  if(event_code == LV_EVENT_RELEASED) //detect button released, run the DemandWiFi function
+  {
+    DemandWifi();
+  }
 }
 
 void DemandWifi()
 {
   wm.setConfigPortalTimeout(300); //set timeout 300s
- 
   if (!wm.startConfigPortal("OnDemandAP","LumiVn@2023")) {
     delay(5000);
     MDNS.begin("esp32");
@@ -372,24 +398,90 @@ void mDNSService()
   }
 }
 
+void ui_event_button1(lv_event_t * e)
+{
+  lv_event_code_t event_code = lv_event_get_code(e);
+  lv_obj_t * target = lv_event_get_target(e);
+  if(event_code == LV_EVENT_VALUE_CHANGED &&  lv_obj_has_state(target, LV_STATE_CHECKED)) {
+    if(btnStatus1 = "OFF")
+    {
+      client.publish(sw1topic, "ON");
+      btnStatus1 = "ON";
+      ESP_LOGE(TAG, "button 1 ON");
+    }
+  }
+  if(event_code == LV_EVENT_VALUE_CHANGED &&  !lv_obj_has_state(target, LV_STATE_CHECKED)) {
+    if(btnStatus1 == "ON")
+    {
+      client.publish(sw1topic, "OFF");
+      btnStatus1 = "OFF";
+      ESP_LOGE(TAG, "button 1 OFF");
+    }
+  }
+}
+
+void ui_event_button2(lv_event_t * e)
+{
+  lv_event_code_t event_code = lv_event_get_code(e);
+  lv_obj_t * target = lv_event_get_target(e);
+  if(event_code == LV_EVENT_VALUE_CHANGED &&  lv_obj_has_state(target, LV_STATE_CHECKED)) {
+    if(btnStatus2 = "OFF")
+    {
+      client.publish(sw2topic, "ON");
+      btnStatus2 = "ON";
+      ESP_LOGE(TAG, "button 2 ON");
+    }
+  }
+  if(event_code == LV_EVENT_VALUE_CHANGED &&  !lv_obj_has_state(target, LV_STATE_CHECKED)) {
+    if(btnStatus2 == "ON")
+    {
+      client.publish(sw2topic, "OFF");
+      btnStatus2 = "OFF";
+      ESP_LOGE(TAG, "button 2 OFF");
+    }
+  }
+}
+
 void ui_event_button3(lv_event_t * e)
 {
-    lv_event_code_t event_code = lv_event_get_code(e);
-    lv_obj_t * target = lv_event_get_target(e);
-    if(event_code == LV_EVENT_VALUE_CHANGED &&  lv_obj_has_state(target, LV_STATE_CHECKED)) {
-      if(btnStatus1 = "OFF")
-      {
-        client.publish(sw1topic, "ON");
-        btnStatus1 = "ON";
-        ESP_LOGE(TAG, "button ON");
-      }
+  lv_event_code_t event_code = lv_event_get_code(e);
+  lv_obj_t * target = lv_event_get_target(e);
+  if(event_code == LV_EVENT_VALUE_CHANGED &&  lv_obj_has_state(target, LV_STATE_CHECKED)) {
+    if(btnStatus3 = "OFF")
+    {
+      client.publish(sw3topic, "ON");
+      btnStatus3 = "ON";
+      ESP_LOGE(TAG, "button 3 ON");
     }
-    if(event_code == LV_EVENT_VALUE_CHANGED &&  !lv_obj_has_state(target, LV_STATE_CHECKED)) {
-      if(btnStatus1 == "ON")
-      {
-        client.publish(sw1topic, "OFF");
-        btnStatus1 = "OFF";
-        ESP_LOGE(TAG, "button OFF");
-      }
+  }
+  if(event_code == LV_EVENT_VALUE_CHANGED &&  !lv_obj_has_state(target, LV_STATE_CHECKED)) {
+    if(btnStatus3 == "ON")
+    {
+      client.publish(sw3topic, "OFF");
+      btnStatus3 = "OFF";
+      ESP_LOGE(TAG, "button 3 OFF");
     }
+  }
+}
+
+void ui_event_button4(lv_event_t * e)
+{
+  lv_event_code_t event_code = lv_event_get_code(e);
+  lv_obj_t * target = lv_event_get_target(e);
+  if(event_code == LV_EVENT_VALUE_CHANGED &&  lv_obj_has_state(target, LV_STATE_CHECKED)) {
+    if(btnStatus4 = "OFF")
+    {
+      client.publish(sw4topic, "ON");
+      btnStatus4 = "ON";
+      ESP_LOGE(TAG, "button 4 ON");
+    }
+  }
+  if(event_code == LV_EVENT_VALUE_CHANGED &&  !lv_obj_has_state(target, LV_STATE_CHECKED)) {
+    if(btnStatus4 == "ON")
+    {
+      client.publish(sw4topic, "OFF");
+      btnStatus4 = "OFF";
+      ESP_LOGE(TAG, "button 4 OFF");
+    }
+  }
 }

@@ -1,0 +1,6 @@
+
+enum ButtonStatus 
+{
+    OFF,
+    ON
+};

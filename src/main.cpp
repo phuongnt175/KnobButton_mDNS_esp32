@@ -24,17 +24,18 @@
 /******************************************************************************/
 /*                              INCLUDE FILES                                 */
 /******************************************************************************/
-#include <lvgl.h>
 #include <Arduino_GFX_Library.h>
-#include "button.hpp"
-#include "mt8901.hpp"
-#include <ui.h>
-#include <WiFiManager.h>
-#include <ESPmDNS.h>
 #include <WiFiClientSecure.h>
 #include <PubSubClient.h>
-#include "esp_log.h"
+#include <button.hpp>
+#include <mt8901.hpp>
+#include <Arduino.h>
+#include <ESPmDNS.h>
 #include <FastLED.h>
+#include <WiFi.h>
+#include <lvgl.h>
+#include <API.h>
+#include <main.h>
 
 /******************************************************************************/
 /*                     PRIVATE TYPES and DEFINITIONS                         */
@@ -50,13 +51,9 @@ CRGB leds[LED_NUM];
 #define SERVICE_NAME "lumismarthome"
 #define SERVICE_PROTOCOL "tcp"
 #define SERVICE_PORT 5600
-
-#define ADDRESS "172.16.100.137"
-
 /******************************************************************************/
 /*                     EXPORTED TYPES and DEFINITIONS                         */
 /******************************************************************************/
-
 
 /******************************************************************************/
 /*                              PRIVATE DATA                                  */
@@ -67,17 +64,20 @@ const char *sw1topic = "component/sw1";
 const char *sw2topic = "component/sw2";
 const char *sw3topic = "component/sw3";
 const char *sw4topic = "component/sw4";
+//==============================================================================
 
-WiFiManager wm;
+
+//==============================================================================
 WiFiClientSecure  net;
 PubSubClient      client(net);
+IPAddress         ADDRESS;
 
 int PORT = 38883;
 bool res;
-String btnStatus1 = "OFF";
-String btnStatus2 = "OFF";
-String btnStatus3 = "OFF";
-String btnStatus4 = "OFF";
+ButtonStatus btnStatus1 = OFF;
+ButtonStatus btnStatus2 = OFF;
+ButtonStatus btnStatus3 = OFF;
+ButtonStatus btnStatus4 = OFF;
 
 static button_t *g_btn;
 static uint32_t screenWidth;
@@ -123,9 +123,10 @@ Eou01zV/f6o0PDqrnMlYhFi5gTg2bbqLYmLFgyw=
 /******************************************************************************/
 /*                            PRIVATE FUNCTIONS                               */
 /******************************************************************************/
+
 void mDNSService();
-void DemandWifi();
 void init_lv_group();
+void ui_event_button(lv_event_t *e, const char* sw_topic, ButtonStatus& btn_status, const char* btn_name);
 
 /******************************************************************************/
 /*                            EXPORTED FUNCTIONS                              */
@@ -189,19 +190,18 @@ void connectBroker()
     }
     else
     {
-      Serial.print("failed, rc=");
-      Serial.print(client.state());
-      Serial.println("try again in 2 seconds");
+      ESP_LOGE(TAG, "Error rc = %d", client.state());
+      ESP_LOGE(TAG, "try again in 2 seconds");
       delay(200);
     }
   }
 }
 
-void SubCallback(lv_obj_t *ui, String Message, String btnStatus)
+void SubCallback(lv_obj_t *ui, String Message, ButtonStatus& btn_status)
 {
   if(Message == "ON")
   {
-    btnStatus = "ON";
+    btn_status = ON;
     if(lv_obj_get_state(ui) == 6 || lv_obj_get_state(ui) == 0)
     {
       _ui_state_modify(ui, LV_STATE_CHECKED, 2);// _UI_STATE_MODIFY_TOGGLE
@@ -210,7 +210,7 @@ void SubCallback(lv_obj_t *ui, String Message, String btnStatus)
   }
   else if(Message == "OFF")
   {
-    btnStatus = "OFF";
+    btn_status = OFF;
     _ui_state_modify(ui, LV_STATE_CHECKED, 1);// _UI_STATE_MODIFY_TOGGLE
     ESP_LOGE(TAG, "-------------------------------------------------------------");
   }
@@ -288,13 +288,8 @@ void setup() {
     lv_indev_drv_register(&indev_drv);
   }
 
-  init_lv_group();
-  ui_init();
-
-  WiFi.mode(WIFI_STA);
-  res = wm.autoConnect("KnobButton", "LumiVn@2023");
-
-  ESP_LOGE(TAG, "%d.%d.%d.%d ", WiFi.localIP()&0xFF, (WiFi.localIP()>>8)&0xFF, (WiFi.localIP()>>16)&0xFF, (WiFi.localIP()>>24)&0xFF);
+  setupAP();
+  setupApi();
 
   if(!MDNS.begin("esp32")) {
     //Serial.println("Error starting mDNS");
@@ -303,21 +298,23 @@ void setup() {
   }
 
   mDNSService();
+  ADDRESS = MDNS.queryHost("HCD84F");
   net.setInsecure();
-  client.setKeepAlive(60);
   net.setCACert(local_root_ca);
+  client.setKeepAlive(60);
   client.setServer(ADDRESS, PORT);
   client.setCallback(Callback);
-  connectBroker();
+  init_lv_group();
+  ui_init();
 }
 
 void loop() {
-  
-  lv_timer_handler(); /* let the GUI do its work */
+  lv_timer_handler();
+  handleAP();
   if(!client.connected())
   {
     client.setKeepAlive(60); // setting keep alive to 60 seconds
-    connectBroker();
+    //connectBroker();
   }
   else{
     client.loop();
@@ -341,147 +338,59 @@ void init_lv_group() {
   }
 }
 
-void ui_event_resetWifi(lv_event_t * e)
-{
-  lv_event_code_t event_code = lv_event_get_code(e);
-  lv_obj_t * target = lv_event_get_target(e);
-  if(event_code == LV_EVENT_RELEASED) //detect button released, run the DemandWiFi function
-  {
-    DemandWifi();
-  }
-}
-
-void DemandWifi()
-{
-  wm.setConfigPortalTimeout(300); //set timeout 300s
-  if (!wm.startConfigPortal("OnDemandAP","LumiVn@2023")) {
-    delay(5000);
-    MDNS.begin("esp32");
-  }
-}
-
 void mDNSService()
 {
   MDNS.addService(SERVICE_NAME, SERVICE_PROTOCOL, SERVICE_PORT);
-
   int nrOfServices = MDNS.queryService(SERVICE_NAME, SERVICE_PROTOCOL);
-  
   if (nrOfServices == 0) {
-    //Serial.println("No services were found.");
     ESP_LOGE(TAG, "No services were found.");
   } 
   else {
-    
-    //Serial.print("Number of services found: ");
     ESP_LOGE(TAG, "Number of services found: %d", nrOfServices);
-      
     for (int i = 0; i < nrOfServices; i=i+1) 
     {
-      //Serial.println("---------------");
       ESP_LOGE(TAG, "---------------");
-        
-      //Serial.print("Hostname: ");
-      //Serial.println(MDNS.hostname(i));
       ESP_LOGE(TAG, "Hostname: %s", MDNS.hostname(i));
-
-      //Serial.print("IP address: ");
-      //Serial.println(MDNS.IP(i));
-      ESP_LOGE(TAG, "IP address: %d.%d.%d.%d", MDNS.IP(i)&0xFF, (MDNS.IP(i)>>8)&0xFF, (MDNS.IP(i)>>16)&0xFF, (MDNS.IP(i)>>24)&0xFF);
-
-      //Serial.print("Port: ");
-      //Serial.println(MDNS.port(i));
+      ESP_LOGE(TAG, "IP address: %s", MDNS.IP(i).toString().c_str());
       ESP_LOGE(TAG, "Port: %d", MDNS.port(i));
-
-      //Serial.println("---------------");
       ESP_LOGE(TAG, "---------------");
     }
   }
 }
 
-void ui_event_button1(lv_event_t * e)
-{
+void ui_event_button(lv_event_t *e, const char* sw_topic, ButtonStatus& btn_status, const char* btn_name) {
   lv_event_code_t event_code = lv_event_get_code(e);
-  lv_obj_t * target = lv_event_get_target(e);
-  if(event_code == LV_EVENT_VALUE_CHANGED &&  lv_obj_has_state(target, LV_STATE_CHECKED)) {
-    if(btnStatus1 = "OFF")
-    {
-      client.publish(sw1topic, "ON");
-      btnStatus1 = "ON";
-      ESP_LOGE(TAG, "button 1 ON");
-    }
-  }
-  if(event_code == LV_EVENT_VALUE_CHANGED &&  !lv_obj_has_state(target, LV_STATE_CHECKED)) {
-    if(btnStatus1 == "ON")
-    {
-      client.publish(sw1topic, "OFF");
-      btnStatus1 = "OFF";
-      ESP_LOGE(TAG, "button 1 OFF");
+  lv_obj_t *target = lv_event_get_target(e);
+  
+  if (event_code == LV_EVENT_VALUE_CHANGED) {
+    if (lv_obj_has_state(target, LV_STATE_CHECKED)) {
+      if (btn_status == OFF) {
+        client.publish(sw_topic, "ON");
+        btn_status = ON;
+        ESP_LOGE(TAG, "%s ON", btn_name);
+      }
+    } else {
+      if (btn_status == ON) {
+        client.publish(sw_topic, "OFF");
+        btn_status = OFF;
+        ESP_LOGE(TAG, "%s OFF", btn_name);
+      }
     }
   }
 }
 
-void ui_event_button2(lv_event_t * e)
-{
-  lv_event_code_t event_code = lv_event_get_code(e);
-  lv_obj_t * target = lv_event_get_target(e);
-  if(event_code == LV_EVENT_VALUE_CHANGED &&  lv_obj_has_state(target, LV_STATE_CHECKED)) {
-    if(btnStatus2 = "OFF")
-    {
-      client.publish(sw2topic, "ON");
-      btnStatus2 = "ON";
-      ESP_LOGE(TAG, "button 2 ON");
-    }
-  }
-  if(event_code == LV_EVENT_VALUE_CHANGED &&  !lv_obj_has_state(target, LV_STATE_CHECKED)) {
-    if(btnStatus2 == "ON")
-    {
-      client.publish(sw2topic, "OFF");
-      btnStatus2 = "OFF";
-      ESP_LOGE(TAG, "button 2 OFF");
-    }
-  }
+void ui_event_button1(lv_event_t *e) {
+  ui_event_button(e, sw1topic, btnStatus1, "button 1");
 }
 
-void ui_event_button3(lv_event_t * e)
-{
-  lv_event_code_t event_code = lv_event_get_code(e);
-  lv_obj_t * target = lv_event_get_target(e);
-  if(event_code == LV_EVENT_VALUE_CHANGED &&  lv_obj_has_state(target, LV_STATE_CHECKED)) {
-    if(btnStatus3 = "OFF")
-    {
-      client.publish(sw3topic, "ON");
-      btnStatus3 = "ON";
-      ESP_LOGE(TAG, "button 3 ON");
-    }
-  }
-  if(event_code == LV_EVENT_VALUE_CHANGED &&  !lv_obj_has_state(target, LV_STATE_CHECKED)) {
-    if(btnStatus3 == "ON")
-    {
-      client.publish(sw3topic, "OFF");
-      btnStatus3 = "OFF";
-      ESP_LOGE(TAG, "button 3 OFF");
-    }
-  }
+void ui_event_button2(lv_event_t *e) {
+  ui_event_button(e, sw2topic, btnStatus2, "button 2");
 }
 
-void ui_event_button4(lv_event_t * e)
-{
-  lv_event_code_t event_code = lv_event_get_code(e);
-  lv_obj_t * target = lv_event_get_target(e);
-  if(event_code == LV_EVENT_VALUE_CHANGED &&  lv_obj_has_state(target, LV_STATE_CHECKED)) {
-    if(btnStatus4 = "OFF")
-    {
-      client.publish(sw4topic, "ON");
-      btnStatus4 = "ON";
-      ESP_LOGE(TAG, "button 4 ON");
-    }
-  }
-  if(event_code == LV_EVENT_VALUE_CHANGED &&  !lv_obj_has_state(target, LV_STATE_CHECKED)) {
-    if(btnStatus4 == "ON")
-    {
-      client.publish(sw4topic, "OFF");
-      btnStatus4 = "OFF";
-      ESP_LOGE(TAG, "button 4 OFF");
-    }
-  }
+void ui_event_button3(lv_event_t *e) {
+  ui_event_button(e, sw3topic, btnStatus3, "button 3");
+}
+
+void ui_event_button4(lv_event_t *e) {
+  ui_event_button(e, sw4topic, btnStatus4, "button 4");
 }

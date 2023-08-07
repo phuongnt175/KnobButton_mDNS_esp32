@@ -115,8 +115,11 @@ void handlePut()
 
 void setupApi()
 {
-  WiFi.begin(ssid, pass);
-  ESP_LOGE("main", "Connecting to WiFi...");
+  WiFi.disconnect();
+  if(accessPointMode == 0)
+  {
+    WiFi.begin(ssid, pass);
+    ESP_LOGE("main", "Connecting to WiFi...");
   while (WiFi.status() != WL_CONNECTED) {
     ESP_LOGE("main", " . ");
     delay(500);
@@ -130,17 +133,23 @@ void setupApi()
   server.on("/api/device/network/config", HTTP_PUT, handlePut);
   // start server
   server.begin();
+  }
 }
 
 void accessPoint_init()
 {
-  WiFi.softAP("SSW-AP");
+  WiFi.softAP("AP mode esp32", "LumiVn@2023");
   if(debug)
   {
     ESP_LOGE("main", "AccessPoint IP: %s", WiFi.softAPIP().toString());
   }
   ESP_LOGE("main", "Start AP mode");
   WiFi.softAPConfig(local_ip, gateway, subnet);
+  server.on("/api/device/network", getNetwork);
+  server.on("/api/device/network/scan", scanNetwork);
+  server.on("/api/device/network/config", HTTP_PUT, handlePut);
+  // start server
+  server.begin();
   //delay(100);
 }
 
@@ -241,7 +250,6 @@ return value;
 
 void setupAP(void)
 {
-  WiFi.disconnect(true, true);
   int st = getStatusFromEeprom();
   ESP_LOGE("main", "%d", getStatusFromEeprom());
   if(st == 2){
@@ -260,13 +268,7 @@ void setupAP(void)
   if(accessPointMode)
   {
     accessPoint_init();
-    //
     saveStatusToEeprom(0);
-  }
-  else
-  {
-    WiFi.begin(ssid, pass);
-    ESP_LOGE("main", "WiFi Connected ssid: %s, IP: %s", WiFi.SSID(), WiFi.localIP().toString());
   }
 }
 

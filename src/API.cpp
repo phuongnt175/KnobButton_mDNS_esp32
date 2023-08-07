@@ -115,6 +115,7 @@ void handlePut()
 
 void setupApi()
 {
+  int i =0;
   WiFi.disconnect();
   if(accessPointMode == 0)
   {
@@ -123,8 +124,13 @@ void setupApi()
   while (WiFi.status() != WL_CONNECTED) {
     ESP_LOGE("main", " . ");
     delay(500);
+    i++;
+    if(i == 15)
+    {
+      ESP_LOGE("main", "Connect fail, wrong password, enable AP mode");
+      return accessPoint_init();
+    }
   }
-
   ESP_LOGE("main", "WiFi Connected : %s", WiFi.SSID());
   ESP_LOGE("main", "%s", WiFi.localIP().toString());
   }

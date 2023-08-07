@@ -13,6 +13,7 @@ void writeEEPROM(int startAdr, int length, char* writeString);
 void readEEPROM(int startAdr, int maxLength, char* dest);
 void saveStatusToEeprom(byte value);
 byte getStatusFromEeprom();
+void accessPoint_init();
 void setupAP(void);
 void handleAP();
 

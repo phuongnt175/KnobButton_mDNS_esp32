@@ -6,7 +6,7 @@ const char *PWD = " ";
 char ssid[eepromTextVariableSize] = " ";
 char pass[eepromTextVariableSize] = " ";
 
-IPAddress local_ip(192, 168, 1, 1);
+IPAddress local_ip(192, 168, 4, 1);
 IPAddress gateway(192, 168, 1, 1);
 IPAddress subnet(255, 255, 255, 0);
 
@@ -127,12 +127,6 @@ void setupApi()
 
   ESP_LOGE("main", "WiFi Connected : %s", WiFi.SSID());
   ESP_LOGE("main", "%s", WiFi.localIP().toString());
-
-  server.on("/api/device/network", getNetwork);
-  server.on("/api/device/network/scan", scanNetwork);
-  server.on("/api/device/network/config", HTTP_PUT, handlePut);
-  // start server
-  server.begin();
   }
 }
 
@@ -180,7 +174,7 @@ void ui_event_resetWifi(lv_event_t * e)
 {
   lv_event_code_t event_code = lv_event_get_code(e);
   lv_obj_t * target = lv_event_get_target(e);
-  while(event_code == LV_EVENT_LONG_PRESSED_REPEAT) //detect button released, run the DemandWiFi function
+  while(event_code == LV_EVENT_LONG_PRESSED) //detect button released, run the DemandWiFi function
   {
     pushDownCounter++;
     if (debug) ESP_LOGE("main", "%d", pushDownCounter);
@@ -194,8 +188,6 @@ void ui_event_resetWifi(lv_event_t * e)
 }
 
 //====================== EEPROM necessary functions ==============
-//================================================================
-//================================================================
 #define eepromBufferSize 200 // have to be > eepromTextVariableSize * (eepromVariables+1) (33 * (5+1))
 
 //========================================== writeDefaultSettingsToEEPPROM

@@ -319,7 +319,6 @@ void loop() {
   else{
     client.loop();
   }
-  delay(5);
 }
 
 void init_lv_group() {

@@ -125,9 +125,10 @@ void setupApi()
     ESP_LOGE("main", " . ");
     delay(500);
     i++;
-    if(i == 15)
+    if(i == 10)
     {
       ESP_LOGE("main", "Connect fail, wrong password, enable AP mode");
+      accessPointMode = true;
       return accessPoint_init();
     }
   }

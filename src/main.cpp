@@ -1,25 +1,8 @@
 /*
- * Project ZX2D10GE01R-V4848 for Arduino
- * Description: The base project that can be used in the Arduino environment using the ZX2D10GE01R-V4848 device
- * Author: Eric Nam
- * Date: 03-18-2023
+ * Author: PhuongNT
  * Custom by PhuongNT.
  * Last Change: 21-07-2023
  */
-
-// ** Prerequisites **
-// ESP32 Arduino 2.0.7 based on ESP-IDF 4.4.4
-// https://github.com/espressif/arduino-esp32
-
-// LVGL version 8.3.5
-// https://github.com/lvgl/lvgl
-
-// GFX Library for Arduino 1.3.2
-// https://github.com/moononournation/Arduino_GFX
-
-// ZX2D10GE01R-V4848 for ESP-IDF
-// https://github.com/wireless-tag-com/ZX2D10GE01R-V4848
-
 /******************************************************************************/
 /******************************************************************************/
 /*                              INCLUDE FILES                                 */
@@ -48,24 +31,34 @@
 #define LED_NUM 13
 CRGB leds[LED_NUM];
 
-#define SERVICE_NAME "lumismarthome"
+#define SERVICE_NAME "airplay"
 #define SERVICE_PROTOCOL "tcp"
 #define SERVICE_PORT 5600
 /******************************************************************************/
 /*                     EXPORTED TYPES and DEFINITIONS                         */
 /******************************************************************************/
+extern boolean accessPointMode;
 
 /******************************************************************************/
 /*                              PRIVATE DATA                                  */
 /******************************************************************************/
 const char *MQTT_USER = "component"; // leave blank if no credentials used
 const char *MQTT_PASS = " "; // leave blank if no credentials used
-const char *sw1topic = "component/sw1";
-const char *sw2topic = "component/sw2";
-const char *sw3topic = "component/sw3";
-const char *sw4topic = "component/sw4";
-//==============================================================================
+const char *swtopic = "component/zigbee/control";
+const char *statusTopic = "component/zigbee/status";
+// const char *sw2topic = "component/sw2";
+// const char *sw3topic = "component/sw3";
+// const char *sw4topic = "component/sw4";
 
+char messageOn1[] = "{\"cmd\":\"set\",\"control_source\":{\"id\": \" \",\"type\":\"app\"},\"objects\":[{\"data\":[\"zigbee-80:4B:50:FF:FE:FA:83:B1-1\"],\"execution\":[{\"command\":\"OnOff\",\"params\":{\"on\":true}}],\"type\":\"devices\"}],\"reqid\": \" \",\"source\":\"core\"}";
+char messageOff1[] = "{\"cmd\":\"set\",\"control_source\":{\"id\": \" \",\"type\":\"app\"},\"objects\":[{\"data\":[\"zigbee-80:4B:50:FF:FE:FA:83:B1-1\"],\"execution\":[{\"command\":\"OnOff\",\"params\":{\"on\":false}}],\"type\":\"devices\"}],\"reqid\": \" \",\"source\":\"core\"}";
+char messageOn2[] = "{\"cmd\":\"set\",\"control_source\":{\"id\": \" \",\"type\":\"app\"},\"objects\":[{\"data\":[\"zigbee-80:4B:50:FF:FE:FA:83:B1-3\"],\"execution\":[{\"command\":\"OnOff\",\"params\":{\"on\":true}}],\"type\":\"devices\"}],\"reqid\": \" \",\"source\":\"core\"}";
+char messageOff2[] = "{\"cmd\":\"set\",\"control_source\":{\"id\": \" \",\"type\":\"app\"},\"objects\":[{\"data\":[\"zigbee-80:4B:50:FF:FE:FA:83:B1-3\"],\"execution\":[{\"command\":\"OnOff\",\"params\":{\"on\":false}}],\"type\":\"devices\"}],\"reqid\": \" \",\"source\":\"core\"}";
+char messageOn3[] = "{\"cmd\":\"set\",\"control_source\":{\"id\": \" \",\"type\":\"app\"},\"objects\":[{\"data\":[\"zigbee-80:4B:50:FF:FE:FA:83:B1-5\"],\"execution\":[{\"command\":\"OnOff\",\"params\":{\"on\":true}}],\"type\":\"devices\"}],\"reqid\": \" \",\"source\":\"core\"}";
+char messageOff3[] = "{\"cmd\":\"set\",\"control_source\":{\"id\": \" \",\"type\":\"app\"},\"objects\":[{\"data\":[\"zigbee-80:4B:50:FF:FE:FA:83:B1-5\"],\"execution\":[{\"command\":\"OnOff\",\"params\":{\"on\":false}}],\"type\":\"devices\"}],\"reqid\": \" \",\"source\":\"core\"}";
+char messageOn4[] = "{\"cmd\":\"set\",\"control_source\":{\"id\": \" \",\"type\":\"app\"},\"objects\":[{\"data\":[\"zigbee-80:4B:50:FF:FE:FA:83:B1-7\"],\"execution\":[{\"command\":\"OnOff\",\"params\":{\"on\":true}}],\"type\":\"devices\"}],\"reqid\": \" \",\"source\":\"core\"}";
+char messageOff4[] = "{\"cmd\":\"set\",\"control_source\":{\"id\": \" \",\"type\":\"app\"},\"objects\":[{\"data\":[\"zigbee-80:4B:50:FF:FE:FA:83:B1-7\"],\"execution\":[{\"command\":\"OnOff\",\"params\":{\"on\":false}}],\"type\":\"devices\"}],\"reqid\": \" \",\"source\":\"core\"}";
+//==============================================================================
 
 //==============================================================================
 WiFiClientSecure  net;
@@ -73,7 +66,7 @@ PubSubClient      client(net);
 IPAddress         ADDRESS;
 
 int PORT = 38883;
-bool res;
+// bool res;
 ButtonStatus btnStatus1 = OFF;
 ButtonStatus btnStatus2 = OFF;
 ButtonStatus btnStatus3 = OFF;
@@ -123,10 +116,9 @@ Eou01zV/f6o0PDqrnMlYhFi5gTg2bbqLYmLFgyw=
 /******************************************************************************/
 /*                            PRIVATE FUNCTIONS                               */
 /******************************************************************************/
-
 void mDNSService();
 void init_lv_group();
-void ui_event_button(lv_event_t *e, const char* sw_topic, ButtonStatus& btn_status, const char* btn_name);
+void ui_event_button(lv_event_t *e, const char* sw_topic, ButtonStatus& btn_status);
 
 /******************************************************************************/
 /*                            EXPORTED FUNCTIONS                              */
@@ -183,10 +175,8 @@ void connectBroker()
     if(client.connect(clientId.c_str(), MQTT_USER, MQTT_PASS))
     {
       ESP_LOGE(TAG, "Connected");
-      client.subscribe(sw1topic);
-      client.subscribe(sw2topic);
-      client.subscribe(sw3topic);
-      client.subscribe(sw4topic);
+      //client.subscribe(swtopic);
+      client.subscribe(statusTopic);
     }
     else
     {
@@ -199,7 +189,8 @@ void connectBroker()
 
 void SubCallback(lv_obj_t *ui, String Message, ButtonStatus& btn_status)
 {
-  if(Message == "ON")
+  ESP_LOGE(TAG, "%s", Message);
+  if(Message == messageOn1)
   {
     btn_status = ON;
     if(lv_obj_get_state(ui) == 6 || lv_obj_get_state(ui) == 0)
@@ -208,7 +199,7 @@ void SubCallback(lv_obj_t *ui, String Message, ButtonStatus& btn_status)
     }
     ESP_LOGE(TAG, "-------------------------------------------------------------");
   }
-  else if(Message == "OFF")
+  else if(Message == messageOff1)
   {
     btn_status = OFF;
     _ui_state_modify(ui, LV_STATE_CHECKED, 1);// _UI_STATE_MODIFY_TOGGLE
@@ -221,22 +212,22 @@ void Callback(char* topic, byte* payload, unsigned int length) {
   payload[length] = '\0'; //NULL terminator used to terminate the char array
   String message = (char*)payload;
   ESP_LOGE(TAG, "%s", message);
-  if(String(topic) == sw1topic)
+  if(String(topic) == swtopic)
   {
     SubCallback(ui_button1, message, btnStatus1);
   }
-  if(String(topic) == sw2topic)
-  {
-    SubCallback(ui_button2, message, btnStatus2);
-  }
-  if(String(topic) == sw3topic)
-  {
-    SubCallback(ui_button3, message, btnStatus3);
-  }
-  if(String(topic) == sw4topic)
-  {
-    SubCallback(ui_button4, message, btnStatus4);
-  }
+  // if(String(topic) == sw2topic)
+  // {
+  //   SubCallback(ui_button2, message, btnStatus2);
+  // }
+  // if(String(topic) == sw3topic)
+  // {
+  //   SubCallback(ui_button3, message, btnStatus3);
+  // }
+  // if(String(topic) == sw4topic)
+  // {
+  //   SubCallback(ui_button4, message, btnStatus4);
+  // }
 }
 
 void setup() {
@@ -314,7 +305,10 @@ void loop() {
   if(!client.connected())
   {
     client.setKeepAlive(60); // setting keep alive to 60 seconds
-    //connectBroker();
+    if(accessPointMode == false)
+    {
+      connectBroker();
+    }
   }
   else{
     client.loop();
@@ -340,7 +334,10 @@ void init_lv_group() {
 void mDNSService()
 {
   MDNS.addService(SERVICE_NAME, SERVICE_PROTOCOL, SERVICE_PORT);
-  int nrOfServices = MDNS.queryService(SERVICE_NAME, SERVICE_PROTOCOL);
+  MDNS.addServiceTxt(SERVICE_NAME, SERVICE_PROTOCOL, "manufacturer", "LUMI");
+  MDNS.addServiceTxt(SERVICE_NAME, SERVICE_PROTOCOL, "mac", "f4:12:fa:cf:4e:b4");
+  
+  int nrOfServices = MDNS.queryService("lumismarthome", SERVICE_PROTOCOL);
   if (nrOfServices == 0) {
     ESP_LOGE(TAG, "No services were found.");
   } 
@@ -357,39 +354,39 @@ void mDNSService()
   }
 }
 
-void ui_event_button(lv_event_t *e, const char* sw_topic, ButtonStatus& btn_status, const char* btn_name) {
+void ui_event_button(lv_event_t *e, const char* sw_topic, ButtonStatus& btn_status, char *message1, char *message2) {
   lv_event_code_t event_code = lv_event_get_code(e);
   lv_obj_t *target = lv_event_get_target(e);
   
   if (event_code == LV_EVENT_VALUE_CHANGED) {
     if (lv_obj_has_state(target, LV_STATE_CHECKED)) {
       if (btn_status == OFF) {
-        client.publish(sw_topic, "ON");
+        client.publish(sw_topic, message1);
         btn_status = ON;
-        ESP_LOGE(TAG, "%s ON", btn_name);
+        ESP_LOGE(TAG, "%s", message2);
       }
     } else {
       if (btn_status == ON) {
-        client.publish(sw_topic, "OFF");
+        client.publish(sw_topic, message2);
         btn_status = OFF;
-        ESP_LOGE(TAG, "%s OFF", btn_name);
+        ESP_LOGE(TAG, "%s", message1);
       }
     }
   }
 }
 
 void ui_event_button1(lv_event_t *e) {
-  ui_event_button(e, sw1topic, btnStatus1, "button 1");
+  ui_event_button(e, swtopic, btnStatus1, messageOn1, messageOff1);
 }
 
 void ui_event_button2(lv_event_t *e) {
-  ui_event_button(e, sw2topic, btnStatus2, "button 2");
+  ui_event_button(e, swtopic, btnStatus2, messageOn2, messageOff2);
 }
 
 void ui_event_button3(lv_event_t *e) {
-  ui_event_button(e, sw3topic, btnStatus3, "button 3");
+  ui_event_button(e, swtopic, btnStatus3, messageOn3, messageOff3);
 }
 
 void ui_event_button4(lv_event_t *e) {
-  ui_event_button(e, sw4topic, btnStatus4, "button 4");
+  ui_event_button(e, swtopic, btnStatus4, messageOn4, messageOff4);
 }

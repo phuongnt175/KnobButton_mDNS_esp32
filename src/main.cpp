@@ -19,6 +19,7 @@
 #include <lvgl.h>
 #include <API.h>
 #include <main.h>
+#include <stdio.h>
 
 /******************************************************************************/
 /*                     PRIVATE TYPES and DEFINITIONS                         */
@@ -34,6 +35,9 @@ CRGB leds[LED_NUM];
 #define SERVICE_NAME "airplay"
 #define SERVICE_PROTOCOL "tcp"
 #define SERVICE_PORT 5600
+
+#define ON_MSG    "true"
+#define OFF_MSG   "false"
 /******************************************************************************/
 /*                     EXPORTED TYPES and DEFINITIONS                         */
 /******************************************************************************/
@@ -58,6 +62,11 @@ char messageOn3[] = "{\"cmd\":\"set\",\"control_source\":{\"id\": \" \",\"type\"
 char messageOff3[] = "{\"cmd\":\"set\",\"control_source\":{\"id\": \" \",\"type\":\"app\"},\"objects\":[{\"data\":[\"zigbee-80:4B:50:FF:FE:FA:83:B1-5\"],\"execution\":[{\"command\":\"OnOff\",\"params\":{\"on\":false}}],\"type\":\"devices\"}],\"reqid\": \" \",\"source\":\"core\"}";
 char messageOn4[] = "{\"cmd\":\"set\",\"control_source\":{\"id\": \" \",\"type\":\"app\"},\"objects\":[{\"data\":[\"zigbee-80:4B:50:FF:FE:FA:83:B1-7\"],\"execution\":[{\"command\":\"OnOff\",\"params\":{\"on\":true}}],\"type\":\"devices\"}],\"reqid\": \" \",\"source\":\"core\"}";
 char messageOff4[] = "{\"cmd\":\"set\",\"control_source\":{\"id\": \" \",\"type\":\"app\"},\"objects\":[{\"data\":[\"zigbee-80:4B:50:FF:FE:FA:83:B1-7\"],\"execution\":[{\"command\":\"OnOff\",\"params\":{\"on\":false}}],\"type\":\"devices\"}],\"reqid\": \" \",\"source\":\"core\"}";
+
+char ep1[] = "zigbee-80:4B:50:FF:FE:FA:83:B1-1";
+char ep2[] = "zigbee-80:4B:50:FF:FE:FA:83:B1-3";
+char ep3[] = "zigbee-80:4B:50:FF:FE:FA:83:B1-5";
+char ep4[] = "zigbee-80:4B:50:FF:FE:FA:83:B1-7";
 //==============================================================================
 
 //==============================================================================
@@ -174,9 +183,8 @@ void connectBroker()
     clientId += String(random(0xffff), HEX);
     if(client.connect(clientId.c_str(), MQTT_USER, MQTT_PASS))
     {
-      ESP_LOGE(TAG, "Connected");
-      //client.subscribe(swtopic);
       client.subscribe(statusTopic);
+      ESP_LOGE(TAG, "Connected");
     }
     else
     {
@@ -187,11 +195,11 @@ void connectBroker()
   }
 }
 
-void SubCallback(lv_obj_t *ui, String Message, ButtonStatus& btn_status)
+void SubCallback(lv_obj_t *ui, char* message, ButtonStatus& btn_status)
 {
-  ESP_LOGE(TAG, "%s", Message);
-  if(Message == messageOn1)
+  if(strstr(message, ON_MSG) != NULL)
   {
+    ESP_LOGE(TAG, "ON");
     btn_status = ON;
     if(lv_obj_get_state(ui) == 6 || lv_obj_get_state(ui) == 0)
     {
@@ -199,8 +207,9 @@ void SubCallback(lv_obj_t *ui, String Message, ButtonStatus& btn_status)
     }
     ESP_LOGE(TAG, "-------------------------------------------------------------");
   }
-  else if(Message == messageOff1)
+  else if(strstr(message, OFF_MSG) != NULL)
   {
+    ESP_LOGE(TAG, "OFF");
     btn_status = OFF;
     _ui_state_modify(ui, LV_STATE_CHECKED, 1);// _UI_STATE_MODIFY_TOGGLE
     ESP_LOGE(TAG, "-------------------------------------------------------------");
@@ -210,24 +219,27 @@ void SubCallback(lv_obj_t *ui, String Message, ButtonStatus& btn_status)
 void Callback(char* topic, byte* payload, unsigned int length) {
 
   payload[length] = '\0'; //NULL terminator used to terminate the char array
-  String message = (char*)payload;
-  ESP_LOGE(TAG, "%s", message);
-  if(String(topic) == swtopic)
+  char* message = (char*)payload;
+  if(String(topic) == statusTopic)
   {
-    SubCallback(ui_button1, message, btnStatus1);
+    ESP_LOGE(TAG, "%s", payload);
+    if(strstr(message, ep1) != NULL)
+    {
+      SubCallback(ui_button1, message, btnStatus1);
+    }
+    if(strstr(message, ep2) != NULL)
+    {
+      SubCallback(ui_button2, message, btnStatus2);
+    }
+    if(strstr(message, ep3) != NULL)
+    {
+      SubCallback(ui_button3, message, btnStatus3);
+    }
+    if(strstr(message, ep4) != NULL)
+    {
+      SubCallback(ui_button4, message, btnStatus4);
+    }
   }
-  // if(String(topic) == sw2topic)
-  // {
-  //   SubCallback(ui_button2, message, btnStatus2);
-  // }
-  // if(String(topic) == sw3topic)
-  // {
-  //   SubCallback(ui_button3, message, btnStatus3);
-  // }
-  // if(String(topic) == sw4topic)
-  // {
-  //   SubCallback(ui_button4, message, btnStatus4);
-  // }
 }
 
 void setup() {
@@ -293,6 +305,7 @@ void setup() {
   net.setInsecure();
   net.setCACert(local_root_ca);
   client.setKeepAlive(60);
+  client.setBufferSize(1024);
   client.setServer(ADDRESS, PORT);
   client.setCallback(Callback);
   init_lv_group();
@@ -363,13 +376,11 @@ void ui_event_button(lv_event_t *e, const char* sw_topic, ButtonStatus& btn_stat
       if (btn_status == OFF) {
         client.publish(sw_topic, message1);
         btn_status = ON;
-        ESP_LOGE(TAG, "%s", message2);
       }
     } else {
       if (btn_status == ON) {
         client.publish(sw_topic, message2);
         btn_status = OFF;
-        ESP_LOGE(TAG, "%s", message1);
       }
     }
   }

@@ -7,19 +7,21 @@
 /******************************************************************************/
 /*                              INCLUDE FILES                                 */
 /******************************************************************************/
+#include <stdio.h>
 #include <Arduino_GFX_Library.h>
 #include <WiFiClientSecure.h>
 #include <PubSubClient.h>
-#include <button.hpp>
-#include <mt8901.hpp>
+#include <Mid/button/button.hpp>
+#include <Mid/mt8901/mt8901.hpp>
 #include <Arduino.h>
 #include <ESPmDNS.h>
 #include <FastLED.h>
 #include <WiFi.h>
 #include <lvgl.h>
-#include <API.h>
-#include <main.h>
-#include <stdio.h>
+#include <Mid/api/api.h>
+#include <App/main/main.h>
+#include <App/CmdMessage/cmdStatus.hpp>
+//#include <App/CmdMessage/CmdPost.hpp>
 
 /******************************************************************************/
 /*                     PRIVATE TYPES and DEFINITIONS                         */
@@ -48,25 +50,31 @@ extern boolean accessPointMode;
 /******************************************************************************/
 const char *MQTT_USER = "component"; // leave blank if no credentials used
 const char *MQTT_PASS = " "; // leave blank if no credentials used
-const char *swtopic = "component/zigbee/control";
 const char *statusTopic = "component/zigbee/status";
-// const char *sw2topic = "component/sw2";
-// const char *sw3topic = "component/sw3";
-// const char *sw4topic = "component/sw4";
+const char *controlTopic = "component/zigbee/control";
+const char *configTopic = "component/zigbee/config";
 
-char messageOn1[] = "{\"cmd\":\"set\",\"control_source\":{\"id\": \" \",\"type\":\"app\"},\"objects\":[{\"data\":[\"zigbee-80:4B:50:FF:FE:FA:83:B1-1\"],\"execution\":[{\"command\":\"OnOff\",\"params\":{\"on\":true}}],\"type\":\"devices\"}],\"reqid\": \" \",\"source\":\"core\"}";
-char messageOff1[] = "{\"cmd\":\"set\",\"control_source\":{\"id\": \" \",\"type\":\"app\"},\"objects\":[{\"data\":[\"zigbee-80:4B:50:FF:FE:FA:83:B1-1\"],\"execution\":[{\"command\":\"OnOff\",\"params\":{\"on\":false}}],\"type\":\"devices\"}],\"reqid\": \" \",\"source\":\"core\"}";
-char messageOn2[] = "{\"cmd\":\"set\",\"control_source\":{\"id\": \" \",\"type\":\"app\"},\"objects\":[{\"data\":[\"zigbee-80:4B:50:FF:FE:FA:83:B1-3\"],\"execution\":[{\"command\":\"OnOff\",\"params\":{\"on\":true}}],\"type\":\"devices\"}],\"reqid\": \" \",\"source\":\"core\"}";
-char messageOff2[] = "{\"cmd\":\"set\",\"control_source\":{\"id\": \" \",\"type\":\"app\"},\"objects\":[{\"data\":[\"zigbee-80:4B:50:FF:FE:FA:83:B1-3\"],\"execution\":[{\"command\":\"OnOff\",\"params\":{\"on\":false}}],\"type\":\"devices\"}],\"reqid\": \" \",\"source\":\"core\"}";
-char messageOn3[] = "{\"cmd\":\"set\",\"control_source\":{\"id\": \" \",\"type\":\"app\"},\"objects\":[{\"data\":[\"zigbee-80:4B:50:FF:FE:FA:83:B1-5\"],\"execution\":[{\"command\":\"OnOff\",\"params\":{\"on\":true}}],\"type\":\"devices\"}],\"reqid\": \" \",\"source\":\"core\"}";
-char messageOff3[] = "{\"cmd\":\"set\",\"control_source\":{\"id\": \" \",\"type\":\"app\"},\"objects\":[{\"data\":[\"zigbee-80:4B:50:FF:FE:FA:83:B1-5\"],\"execution\":[{\"command\":\"OnOff\",\"params\":{\"on\":false}}],\"type\":\"devices\"}],\"reqid\": \" \",\"source\":\"core\"}";
-char messageOn4[] = "{\"cmd\":\"set\",\"control_source\":{\"id\": \" \",\"type\":\"app\"},\"objects\":[{\"data\":[\"zigbee-80:4B:50:FF:FE:FA:83:B1-7\"],\"execution\":[{\"command\":\"OnOff\",\"params\":{\"on\":true}}],\"type\":\"devices\"}],\"reqid\": \" \",\"source\":\"core\"}";
-char messageOff4[] = "{\"cmd\":\"set\",\"control_source\":{\"id\": \" \",\"type\":\"app\"},\"objects\":[{\"data\":[\"zigbee-80:4B:50:FF:FE:FA:83:B1-7\"],\"execution\":[{\"command\":\"OnOff\",\"params\":{\"on\":false}}],\"type\":\"devices\"}],\"reqid\": \" \",\"source\":\"core\"}";
+char ep1[] = "zigbee-f4:12:fa:cf:4e:b4-1";
+char ep2[] = "zigbee-f4:12:fa:cf:4e:b4-3";
+char ep3[] = "zigbee-f4:12:fa:cf:4e:b4-5";
+char ep4[] = "zigbee-f4:12:fa:cf:4e:b4-7";
 
-char ep1[] = "zigbee-80:4B:50:FF:FE:FA:83:B1-1";
-char ep2[] = "zigbee-80:4B:50:FF:FE:FA:83:B1-3";
-char ep3[] = "zigbee-80:4B:50:FF:FE:FA:83:B1-5";
-char ep4[] = "zigbee-80:4B:50:FF:FE:FA:83:B1-7";
+char postMess[] = "{\"cmd\" : \"post\",\"objects\" : [{\"bridge_key\" : \"zigbee\",\"data\" : [{\"attr\" : {\"McuInfo\" : {\"GlassType\" : 2,\"RelayType\" : 0},\"deviceInfo\" : {\"Manufacturer\" : \"Lumi R&D\",\"ModelId\" : \"LM-SZDM4\"},\"sceneConfig\" : {\"led_level\" : 1,"
+"\"led_schedule\" : {\"enable\" : false,\"time\" : {\"endtime\" : \"00:00\",\"starttime\" : \"00:00\"}},\"lock_touch\" : false,\"output\" : {\"delay\" : 0,\"mode\" : 0},\"touch_mode\" : 0},\"sceneSetting\" : [{\"name\" : \"lock_touch\"},{\"name\" : \"touch_mode\"},{\"name\" : \"led_level\"},"
+"{\"name\" : \"led_schedule\"}]},\"brigde_key\" : \"zigbee\",\"config\" : {},\"deviceInfo\" : {\"ApplicationVer\" : \"\",\"DataCode\" : \"\",\"HardwareVer\" : \"\",\"Manufacturer\" : \"Lumi R&D\",\"ModelId\" : \"LM-SZDM4\",\"ZigbeeProtocolVer\" : \"3.0\",\"ZigbeeStackVer\" : \"\"},"
+"\"hash\" : \"zigbee-f4:12:fa:cf:4e:b4-1\",\"mac\" : \"f4:12:fa:cf:4e:b4\",\"macdev\" : \"f4:12:fa:cf:4e:b4\",\"traits\" : [{\"is_main\" : true,\"name\" : \"OnOff\"}],\"type\" : \"SWITCH\"},{\"attr\" : {\"McuInfo\" : {\"GlassType\" : 2,\"RelayType\" : 0},"
+"\"deviceInfo\" : {\"Manufacturer\" : \"Lumi R&D\",\"ModelId\" : \"LM-SZDM4\"},\"sceneConfig\" : {\"lock_touch\" : false,\"output\" : {\"delay\" : 0,\"mode\" : 0},\"touch_mode\" : 0},\"sceneSetting\" : [{\"name\" : \"lock_touch\"},{\"name\" : \"touch_mode\"}]},\"brigde_key\" : \"zigbee\","
+"\"config\" : {},\"deviceInfo\" : {},\"hash\" : \"zigbee-f4:12:fa:cf:4e:b4-3\",\"mac\" : \"f4:12:fa:cf:4e:b4\",\"macdev\" : \"f4:12:fa:cf:4e:b4\",\"traits\" : [{\"is_main\" : true,\"name\" : \"OnOff\"}],\"type\" : \"SWITCH\"},{\"attr\" : {\"McuInfo\" : {\"GlassType\" : 2,\"RelayType\" : 0},"
+"\"deviceInfo\" : {\"Manufacturer\" : \"Lumi R&D\",\"ModelId\" : \"LM-SZDM4\"},\"sceneConfig\" : {\"lock_touch\" : false,\"output\" : {\"delay\" : 0,\"mode\" : 0},\"touch_mode\" : 0},\"sceneSetting\" : [{\"name\" : \"lock_touch\"},{\"name\" : \"touch_mode\"}]},\"brigde_key\" : \"zigbee\",\"config\" : {},"
+"\"deviceInfo\" : {},\"hash\" : \"zigbee-f4:12:fa:cf:4e:b4-5\",\"mac\" : \"f4:12:fa:cf:4e:b4\",\"macdev\" : \"f4:12:fa:cf:4e:b4\",\"traits\" : [{\"is_main\" : true,\"name\" : \"OnOff\"}],\"type\" : \"SWITCH\"},{\"attr\" : {\"McuInfo\" : {\"GlassType\" : 2,\"RelayType\" : 0},"
+"\"deviceInfo\" : {\"Manufacturer\" : \"Lumi R&D\",\"ModelId\" : \"LM-SZDM4\"},\"sceneConfig\" : {\"lock_touch\" : false,\"output\" : {\"delay\" : 0,\"mode\" : 0},\"touch_mode\" : 0},\"sceneSetting\" : [{\"name\" : \"lock_touch\"},{\"name\" : \"touch_mode\"}]},\"brigde_key\" : \"zigbee\",\"config\" : {},"
+"\"deviceInfo\" : {},\"hash\" : \"zigbee-f4:12:fa:cf:4e:b4-7\",\"mac\" : \"f4:12:fa:cf:4e:b4\",\"macdev\" : \"f4:12:fa:cf:4e:b4\",\"traits\" : [{\"is_main\" : true,\"name\" : \"OnOff\"}],\"type\" : \"SWITCH\"}],\"type\" : \"devices_local\"}],\"reqid\" : \"CQ3OqOrTUPImOMV\",\"source\" : \"zigbee\"}";
+
+char cmdStatus[] = "{\"cmd\":\"status\",\"objects\":[{\"bridge_key\":\"zigbee\",\"data\":[{\"hash\":\"zigbee-f4:12:fa:cf:4e:b4-1\",\"states\":{\"OnOff\":{\"on\":true}},\"type\":\"SWITCH\"}],\"type\":\"devices\"}],\"reqid\":\" \",\"source\":\"zigbee\"}";
+
+StaticJsonDocument<4096> jsonStatus;
+DeserializationError error = deserializeJson(jsonStatus, cmdStatus);
+char output[4096];
 //==============================================================================
 
 //==============================================================================
@@ -127,7 +135,7 @@ Eou01zV/f6o0PDqrnMlYhFi5gTg2bbqLYmLFgyw=
 /******************************************************************************/
 void mDNSService();
 void init_lv_group();
-void ui_event_button(lv_event_t *e, const char* sw_topic, ButtonStatus& btn_status);
+void ui_event_button(lv_event_t *e, ButtonStatus& btn_status, char ep);
 
 /******************************************************************************/
 /*                            EXPORTED FUNCTIONS                              */
@@ -179,12 +187,16 @@ void connectBroker()
   while(!client.connected())
   {
     ESP_LOGE(TAG, "Attemping MQTT connection...");
-    String clientId = "esp32-s3-";
+    String clientId = "SW-";
     clientId += String(random(0xffff), HEX);
     if(client.connect(clientId.c_str(), MQTT_USER, MQTT_PASS))
     {
       client.subscribe(statusTopic);
+      client.subscribe(controlTopic);
       ESP_LOGE(TAG, "Connected");
+
+      client.publish(configTopic,postMess);
+
     }
     else
     {
@@ -195,24 +207,32 @@ void connectBroker()
   }
 }
 
-void SubCallback(lv_obj_t *ui, char* message, ButtonStatus& btn_status)
+void SubCallback(lv_obj_t *ui, char* message, ButtonStatus& btn_status, char *ep)
 {
   if(strstr(message, ON_MSG) != NULL)
   {
-    ESP_LOGE(TAG, "ON");
+    //ESP_LOGE(TAG, "ON");
     btn_status = ON;
     if(lv_obj_get_state(ui) == 6 || lv_obj_get_state(ui) == 0)
     {
       _ui_state_modify(ui, LV_STATE_CHECKED, 2);// _UI_STATE_MODIFY_TOGGLE
+      jsonStatus["objects"][0]["data"][0]["states"]["OnOff"]["on"] = true;
+      jsonStatus["objects"][0]["data"][0]["hash"] = ep;
+      serializeJson(jsonStatus, output);
+      client.publish(statusTopic, output);
     }
-    ESP_LOGE(TAG, "-------------------------------------------------------------");
+    //ESP_LOGE(TAG, "-------------------------------------------------------------");
   }
   else if(strstr(message, OFF_MSG) != NULL)
   {
-    ESP_LOGE(TAG, "OFF");
+    //ESP_LOGE(TAG, "OFF");
     btn_status = OFF;
     _ui_state_modify(ui, LV_STATE_CHECKED, 1);// _UI_STATE_MODIFY_TOGGLE
-    ESP_LOGE(TAG, "-------------------------------------------------------------");
+    jsonStatus["objects"][0]["data"][0]["states"]["OnOff"]["on"] = false;
+    jsonStatus["objects"][0]["data"][0]["hash"] = ep;
+    serializeJson(jsonStatus, output);
+    client.publish(statusTopic, output);
+    //ESP_LOGE(TAG, "-------------------------------------------------------------");
   }
 }
 
@@ -220,24 +240,24 @@ void Callback(char* topic, byte* payload, unsigned int length) {
 
   payload[length] = '\0'; //NULL terminator used to terminate the char array
   char* message = (char*)payload;
-  if(String(topic) == statusTopic)
+  if(String(topic) == controlTopic)
   {
-    ESP_LOGE(TAG, "%s", payload);
+    ESP_LOGE(TAG, "%s", message);
     if(strstr(message, ep1) != NULL)
     {
-      SubCallback(ui_button1, message, btnStatus1);
+      SubCallback(ui_button1, message, btnStatus1, ep1);
     }
     if(strstr(message, ep2) != NULL)
     {
-      SubCallback(ui_button2, message, btnStatus2);
+      SubCallback(ui_button2, message, btnStatus2, ep2);
     }
     if(strstr(message, ep3) != NULL)
     {
-      SubCallback(ui_button3, message, btnStatus3);
+      SubCallback(ui_button3, message, btnStatus3, ep3);
     }
     if(strstr(message, ep4) != NULL)
     {
-      SubCallback(ui_button4, message, btnStatus4);
+      SubCallback(ui_button4, message, btnStatus4, ep4);
     }
   }
 }
@@ -294,6 +314,11 @@ void setup() {
   setupAP();
   setupApi();
 
+  byte mac[6];
+  WiFi.macAddress(mac);
+
+  ESP_LOGE(TAG, "Mac device: %x:%x:%x:%x:%x:%x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+
   if(!MDNS.begin("esp32")) {
     //Serial.println("Error starting mDNS");
     ESP_LOGE(TAG, "error starring mDNS!");
@@ -305,7 +330,7 @@ void setup() {
   net.setInsecure();
   net.setCACert(local_root_ca);
   client.setKeepAlive(60);
-  client.setBufferSize(1024);
+  client.setBufferSize(4096);
   client.setServer(ADDRESS, PORT);
   client.setCallback(Callback);
   init_lv_group();
@@ -367,19 +392,27 @@ void mDNSService()
   }
 }
 
-void ui_event_button(lv_event_t *e, const char* sw_topic, ButtonStatus& btn_status, char *message1, char *message2) {
+void ui_event_button(lv_event_t *e, ButtonStatus& btn_status, char *ep) {
   lv_event_code_t event_code = lv_event_get_code(e);
   lv_obj_t *target = lv_event_get_target(e);
   
   if (event_code == LV_EVENT_VALUE_CHANGED) {
     if (lv_obj_has_state(target, LV_STATE_CHECKED)) {
       if (btn_status == OFF) {
-        client.publish(sw_topic, message1);
+        //client.publish(sw_topic, message1);
+        jsonStatus["objects"][0]["data"][0]["states"]["OnOff"]["on"] = true;
+        jsonStatus["objects"][0]["data"][0]["hash"] = ep;
+        serializeJson(jsonStatus, output);
+        client.publish(statusTopic, output);
         btn_status = ON;
       }
     } else {
       if (btn_status == ON) {
-        client.publish(sw_topic, message2);
+        //client.publish(sw_topic, message2);
+        jsonStatus["objects"][0]["data"][0]["states"]["OnOff"]["on"] = false;
+        jsonStatus["objects"][0]["data"][0]["hash"] = ep;
+        serializeJson(jsonStatus, output);
+        client.publish(statusTopic, output);
         btn_status = OFF;
       }
     }
@@ -387,17 +420,17 @@ void ui_event_button(lv_event_t *e, const char* sw_topic, ButtonStatus& btn_stat
 }
 
 void ui_event_button1(lv_event_t *e) {
-  ui_event_button(e, swtopic, btnStatus1, messageOn1, messageOff1);
+  ui_event_button(e, btnStatus1, ep1);
 }
 
 void ui_event_button2(lv_event_t *e) {
-  ui_event_button(e, swtopic, btnStatus2, messageOn2, messageOff2);
+  ui_event_button(e, btnStatus2, ep2);
 }
 
 void ui_event_button3(lv_event_t *e) {
-  ui_event_button(e, swtopic, btnStatus3, messageOn3, messageOff3);
+  ui_event_button(e, btnStatus3, ep3);
 }
 
 void ui_event_button4(lv_event_t *e) {
-  ui_event_button(e, swtopic, btnStatus4, messageOn4, messageOff4);
+  ui_event_button(e, btnStatus4, ep4);
 }

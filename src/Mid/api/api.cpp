@@ -1,4 +1,4 @@
-#include <API.h>
+#include <Mid/api/api.h>
 
 const char *SSID = " ";
 const char *PWD = " ";
@@ -18,9 +18,9 @@ int pushDownCounter = 0;
 int lastConnectedStatus = 0;
 
 WebServer server(80);
-StaticJsonDocument<1024> jsonDocument;
+StaticJsonDocument<4096> jsonDocument;
 
-char g_Buffer[1024];
+char g_Buffer[4096];
  
 void addJsonObjectNet(String dns, String gw, String ssid, String ip, String netmask)
 {

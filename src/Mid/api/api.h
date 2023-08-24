@@ -7,11 +7,14 @@
 #define eepromTextVariableSize 33
 
 //=======================================================================================
-void saveSettingsToEEPPROM(char* ssid_, char* pass_);
-void readSettingsFromEEPROM(char* ssid_, char* pass_);
+void saveWiFiToEEPPROM(char* ssid_, char* pass_);
+void readWiFiFromEEPROM(char* ssid_, char* pass_);
+void saveHCInfoToEEPPROM(char* iphc_, char* machc_);
+void readHCInfoFromEEPROM(char* iphc_, char* machc_);
 void writeEEPROM(int startAdr, int length, char* writeString);
 void readEEPROM(int startAdr, int maxLength, char* dest);
 void saveStatusToEeprom(byte value);
+void eraseEEPROM();
 byte getStatusFromEeprom();
 void accessPoint_init();
 void setupAP(void);

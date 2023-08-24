@@ -46,6 +46,7 @@ CRGB leds[LED_NUM];
 /*                     EXPORTED TYPES and DEFINITIONS                         */
 /******************************************************************************/
 extern boolean accessPointMode;
+extern char iphc[eepromTextVariableSize];
 
 /******************************************************************************/
 /*                              PRIVATE DATA                                  */
@@ -189,6 +190,7 @@ void connectBroker()
     {
       client.subscribe(statusTopic);
       client.subscribe(controlTopic);
+      client.subscribe(configTopic);
       ESP_LOGE(TAG, "Connected");
       generateJsonCommandPost(bridgeKey.c_str(), reqId.c_str(), output, macAddress);
       client.publish(configTopic, output);
@@ -233,11 +235,17 @@ void Callback(char* topic, byte* payload, unsigned int length) {
 
   payload[length] = '\0'; //NULL terminator used to terminate the char array
   char* message = (char*)payload;
-  char endpoint1[] = "switch_ip-F4:12:FA:CF:4E:B4-1";
-  char endpoint2[] = "switch_ip-F4:12:FA:CF:4E:B4-3";
-  char endpoint3[] = "switch_ip-F4:12:FA:CF:4E:B4-5";
-  char endpoint4[] = "switch_ip-F4:12:FA:CF:4E:B4-7";
-  if(String(topic) == controlTopic)
+  char endpoint1[50];
+  char endpoint2[50];
+  char endpoint3[50];
+  char endpoint4[50];
+
+  sprintf(endpoint1, "%s-%s%s", bridgeKey.c_str(), macAddress, ep1);
+  sprintf(endpoint2, "%s-%s%s", bridgeKey.c_str(), macAddress, ep2);
+  sprintf(endpoint3, "%s-%s%s", bridgeKey.c_str(), macAddress, ep3);
+  sprintf(endpoint4, "%s-%s%s", bridgeKey.c_str(), macAddress, ep4);
+
+  if(String(topic) == controlTopic && strstr(message, "set") != NULL)
   {
     ESP_LOGE(TAG, "%s", message);
     if(strstr(message, endpoint1) != NULL )
@@ -247,15 +255,39 @@ void Callback(char* topic, byte* payload, unsigned int length) {
     }
     if(strstr(message, endpoint2) != NULL )
     {
+      ESP_LOGE(TAG, "2");
       SubCallback(ui_button2, message, btnStatus2, ep2);
     }
     if(strstr(message, endpoint3) != NULL )
     {
+      ESP_LOGE(TAG, "3");
       SubCallback(ui_button3, message, btnStatus3, ep3);
     }
     if(strstr(message, endpoint4) != NULL )
     {
+      ESP_LOGE(TAG, "4");
       SubCallback(ui_button4, message, btnStatus4, ep4);
+    }
+  }
+
+  if(String(topic) == controlTopic && strstr(message, "get") != NULL) //response status when app send get message status
+  {
+    if(strstr(message, macAddress) != NULL)
+    {
+      responseGetStatus(bridgeKey, reqId, output, macAddress);
+      client.publish(statusTopic, output);
+    }
+  }
+
+  if(String(topic) == configTopic && strstr(message, "delete") != NULL) //remove device
+  {
+    if(strstr(message, macAddress) != NULL)
+    {
+      ESP_LOGE(TAG, "disconnected");
+      eraseEEPROM();
+      client.disconnect(); //disconnect from mqtt
+      ESP.restart();
+
     }
   }
 }
@@ -326,7 +358,7 @@ void setup() {
   net.setCACert(local_root_ca);
   client.setKeepAlive(60);
   client.setBufferSize(4096);
-  client.setServer("172.16.100.210", PORT);
+  client.setServer(iphc, PORT);
   client.setCallback(Callback);
   init_lv_group();
   ui_init();
@@ -348,10 +380,11 @@ void loop() {
     client.loop();
   }
 
-  if(now - lastTime > 60000) // Send status periodically after 10 minutes
+  if(now - lastTime > 600000) // Send status periodically after 10 minutes
   {
     responseGetStatus(bridgeKey, reqId, output, macAddress);
     client.publish(statusTopic, output);
+    lastTime = now;
   }
 }
 
@@ -389,6 +422,7 @@ void mDNSService()
       ESP_LOGE(TAG, "Hostname: %s", MDNS.hostname(i));
       ESP_LOGE(TAG, "IP address: %s", MDNS.IP(i).toString().c_str());
       ESP_LOGE(TAG, "Port: %d", MDNS.port(i));
+      ESP_LOGE(TAG, "MAC: %s", MDNS.txt(i, "mac").c_str());
       ESP_LOGE(TAG, "---------------");
     }
   }
@@ -438,9 +472,6 @@ void generateJsonCommandPost(const String& bridgeKey, const String& reqId, char 
   StaticJsonDocument<4096> doc;
   
   doc["cmd"] = "post";
-  doc["reqid"] = reqId;
-  doc["source"] = bridgeKey;
-
   JsonArray objects = doc.createNestedArray("objects");
   JsonObject object = objects.createNestedObject();
   object["type"] = "devices_local";
@@ -473,6 +504,9 @@ void generateJsonCommandPost(const String& bridgeKey, const String& reqId, char 
     JsonObject trait = traits.createNestedObject();
     trait["is_main"] = true;
     trait["name"] = "OnOff";
+
+    doc["reqid"] = reqId;
+    doc["source"] = bridgeKey;
   }
   serializeJson(doc, jsonString, 4096);
 }
@@ -483,7 +517,6 @@ void generateJsonCmdStatus(const String& bridgeKey, const String& reqId, char js
 
   // Add command and request ID
   doc["cmd"] = "status";
-  doc["reqid"] = reqId;
   // Create an array of objects for devices
   JsonArray devices = doc.createNestedArray("objects");
 
@@ -505,6 +538,7 @@ void generateJsonCmdStatus(const String& bridgeKey, const String& reqId, char js
   // Create a states object for the data
   JsonObject states = dataObject.createNestedObject("states");
   states["OnOff"]["on"] = flag;
+  doc["reqid"] = reqId;
   doc["source"] = bridgeKey;
   serializeJson(doc, jsonString, 1024);
 }
@@ -545,16 +579,13 @@ void responseGetStatus(const String& bridgeKey, const String& reqId, char jsonSt
   if(lv_obj_get_state(ui_button4) == 6 || lv_obj_get_state(ui_button4) == 0)
   {
     flag[7] = false;
-    ESP_LOGE(TAG,"false");
   }
   else if(lv_obj_get_state(ui_button4) == 7 || lv_obj_get_state(ui_button4) == 1)
   {
     flag[7] = true;
-    ESP_LOGE(TAG,"true");
   }
   // Add command and request ID
   doc["cmd"] = "status";
-  doc["reqid"] = reqId;
   // Create an array of objects for devices
   JsonArray objects = doc.createNestedArray("objects");
 
@@ -579,8 +610,8 @@ void responseGetStatus(const String& bridgeKey, const String& reqId, char jsonSt
       break;
     }
   }
+  doc["reqid"] = reqId;
   doc["source"] = bridgeKey;
-
   // Serialize the JSON document to a string
   serializeJson(doc, jsonString, 4096);
 }

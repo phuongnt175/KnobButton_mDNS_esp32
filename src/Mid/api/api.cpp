@@ -2,9 +2,13 @@
 
 const char *SSID = " ";
 const char *PWD = " ";
+const char *IPHC = " ";
+const char *MACHC = " ";
 
 char ssid[eepromTextVariableSize] = " ";
 char pass[eepromTextVariableSize] = " ";
+char iphc[eepromTextVariableSize] = " ";
+char machc[eepromTextVariableSize] = " ";
 
 IPAddress local_ip(192, 168, 4, 1);
 IPAddress gateway(192, 168, 1, 1);
@@ -84,14 +88,20 @@ void handlePut()
 
   SSID = jsonDocument["ssid"];
   PWD = jsonDocument["password"];
+  IPHC = jsonDocument["ip"];
+  MACHC = jsonDocument["mac"];
 
   server.send(200, "application/json", "{ }");
 
-  saveSettingsToEEPPROM((char*)SSID, (char*)PWD);
-  readSettingsFromEEPROM(ssid, pass);
+  saveWiFiToEEPPROM((char*)SSID, (char*)PWD);
+  readWiFiFromEEPROM(ssid, pass);
+  saveHCInfoToEEPPROM((char*)IPHC, (char*)MACHC);
+  readHCInfoFromEEPROM(iphc, machc);
 
   ESP_LOGE("main", "after api ssid change to : %s", ssid);
   ESP_LOGE("main", "after api pass change to : %s", pass);
+  ESP_LOGE("main", "IP HC: %s", iphc);
+  ESP_LOGE("main", "Mac HC: %s", machc);
 
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, pass);
@@ -107,8 +117,6 @@ void handlePut()
 
   ESP_LOGE("main", "WiFi Connected : %s", WiFi.SSID());
   delay(500);
-  ESP_LOGE("main", "%s", WiFi.localIP().toString());
-
   ESP.restart();
 }
 
@@ -188,6 +196,7 @@ void ui_event_resetWifi(lv_event_t * e)
     delay(1000);
     if (pushDownCounter == 5) { // after 2 seconds the board will be restarted
     if (!accessPointMode) saveStatusToEeprom(2); // write the number 2 to the eeprom
+    delay(500);
     ESP.restart();
     }
   }
@@ -198,19 +207,30 @@ void ui_event_resetWifi(lv_event_t * e)
 #define eepromBufferSize 200 // have to be > eepromTextVariableSize * (eepromVariables+1) (33 * (5+1))
 
 //========================================== writeDefaultSettingsToEEPPROM
-void saveSettingsToEEPPROM(char* ssid_, char* pass_) {
-if (debug) Serial.println("\n============ saveSettingsToEEPPROM");
-writeEEPROM(1 * eepromTextVariableSize , eepromTextVariableSize , ssid_);
-writeEEPROM(2 * eepromTextVariableSize , eepromTextVariableSize , pass_);
+void saveWiFiToEEPPROM(char* ssid_, char* pass_)
+{
+ESP_LOGE("main", "\n============ saveWiFiToEEPPROM");
+writeEEPROM((1 * eepromTextVariableSize) , eepromTextVariableSize , ssid_);
+writeEEPROM((2 * eepromTextVariableSize) , eepromTextVariableSize , pass_);
+}
+
+void saveHCInfoToEEPPROM(char* iphc_, char* machc_)
+{
+  ESP_LOGE("main", "\n============ saveHCInfoToEEPPROM");
+  writeEEPROM((3 * eepromTextVariableSize) , eepromTextVariableSize , iphc_);
+  writeEEPROM((4 * eepromTextVariableSize) , eepromTextVariableSize , machc_);
 }
 //========================================== readSettingsFromEeprom
-void readSettingsFromEEPROM(char* ssid_, char* pass_) {
-readEEPROM( 1 * eepromTextVariableSize , eepromTextVariableSize , ssid_);
+void readWiFiFromEEPROM(char* ssid_, char* pass_) {
+readEEPROM( (1 * eepromTextVariableSize) , eepromTextVariableSize , ssid_);
 readEEPROM( (2 * eepromTextVariableSize) , eepromTextVariableSize , pass_);
+ESP_LOGE("main", "\n============ readWiFifromEEPPROM");
+}
 
-if (debug) Serial.println("\n============ readSettingsFromEEPROM");
-if (debug) Serial.print("\n============ ssid="); if (debug) Serial.println(ssid_);
-if (debug) Serial.print("============ password="); if (debug) Serial.println(pass_);
+void readHCInfoFromEEPROM(char* iphc_, char* machc_) {
+readEEPROM( (3 * eepromTextVariableSize) , eepromTextVariableSize , iphc_);
+readEEPROM( (4 * eepromTextVariableSize) , eepromTextVariableSize , machc_);
+ESP_LOGE("main", "\n============ readHCInfofromEEPPROM");
 }
 
 //================================================================
@@ -247,6 +267,16 @@ EEPROM.end();
 return value;
 }
 
+void eraseEEPROM() {
+  EEPROM.begin(eepromBufferSize);
+  for (int address = 0; address < eepromBufferSize; address++) {
+    EEPROM.write(address, 0);
+  }
+  EEPROM.commit();
+  EEPROM.end();
+}
+
+
 void setupAP(void)
 {
   int st = getStatusFromEeprom();
@@ -255,14 +285,18 @@ void setupAP(void)
     accessPointMode = true;
   } 
   else if(st != 0) {
-    saveSettingsToEEPPROM(ssid, pass);
+    saveWiFiToEEPPROM(ssid, pass);
+    saveHCInfoToEEPPROM(iphc, machc);
   }
 
   ESP_LOGE("main", "AP mode = %s", String(accessPointMode));
 
-  readSettingsFromEEPROM(ssid, pass);
+  readWiFiFromEEPROM(ssid, pass);
+  readHCInfoFromEEPROM(iphc, machc);
   ESP_LOGE("main", "ssid: %s", ssid);
   ESP_LOGE("main", "pass: %s", pass);
+  ESP_LOGE("main", "IP HC: %s", iphc);
+  ESP_LOGE("main", "MAC HC: %s", machc);
 
   if(accessPointMode)
   {

@@ -233,8 +233,9 @@ void SubCallback(lv_obj_t *ui, char* message, ButtonStatus& btn_status, const ch
 
 void Callback(char* topic, byte* payload, unsigned int length) {
 
-  payload[length] = '\0'; //NULL terminator used to terminate the char array
+  payload[length+1] = '\0'; //NULL terminator used to terminate the char array
   char* message = (char*)payload;
+  std::string json = std::string(message);
   char endpoint1[50];
   char endpoint2[50];
   char endpoint3[50];
@@ -245,25 +246,30 @@ void Callback(char* topic, byte* payload, unsigned int length) {
   sprintf(endpoint3, "%s-%s%s", bridgeKey.c_str(), macAddress, ep3);
   sprintf(endpoint4, "%s-%s%s", bridgeKey.c_str(), macAddress, ep4);
 
-  if(String(topic) == controlTopic && strstr(message, "set") != NULL)
+  std::string s_ep1 = std::string(endpoint1);
+  std::string s_ep2 = std::string(endpoint2);
+  std::string s_ep3 = std::string(endpoint3);
+  std::string s_ep4 = std::string(endpoint4);
+
+  if(String(topic) == controlTopic && strstr(message, "set") != NULL) //
   {
     ESP_LOGE(TAG, "%s", message);
-    if(strstr(message, endpoint1) != NULL )
+    if((json.find(s_ep1))!= std::string::npos)
     {
       ESP_LOGE(TAG, "1");
       SubCallback(ui_button1, message, btnStatus1, ep1);
     }
-    if(strstr(message, endpoint2) != NULL )
+    if((json.find(s_ep2))!= std::string::npos)
     {
       ESP_LOGE(TAG, "2");
       SubCallback(ui_button2, message, btnStatus2, ep2);
     }
-    if(strstr(message, endpoint3) != NULL )
+    if((json.find(s_ep3))!= std::string::npos)
     {
       ESP_LOGE(TAG, "3");
       SubCallback(ui_button3, message, btnStatus3, ep3);
     }
-    if(strstr(message, endpoint4) != NULL )
+    if((json.find(s_ep4))!= std::string::npos)
     {
       ESP_LOGE(TAG, "4");
       SubCallback(ui_button4, message, btnStatus4, ep4);

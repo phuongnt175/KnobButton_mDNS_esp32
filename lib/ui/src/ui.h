@@ -42,13 +42,34 @@ extern lv_obj_t * ui_button3;
 extern lv_obj_t * ui_button4;
 void ui_event_resetWifi(lv_event_t * e);
 extern lv_obj_t * ui_resetWifi;
+void ui_event_sceneSetting(lv_event_t * e);
+extern lv_obj_t * ui_sceneSetting;
+
+// SCREEN: ui_SettingScreen
+void ui_SettingScreen_screen_init(void);
+extern lv_obj_t * ui_SettingScreen;
+extern lv_obj_t * ui_scene1;
+extern lv_obj_t * ui_canh1;
+extern lv_obj_t * ui_scene2;
+extern lv_obj_t * ui_canh2;
+extern lv_obj_t * ui_scene3;
+extern lv_obj_t * ui_canh3;
+extern lv_obj_t * ui_scene4;
+extern lv_obj_t * ui_canh4;
+void ui_event_back(lv_event_t * e);
+void ui_event_scene1(lv_event_t * e);
+extern lv_obj_t * ui_back;
+
 extern lv_obj_t * ui____initial_actions0;
 
 LV_IMG_DECLARE(ui_img_lumi_png);    // assets\lumi.png
+LV_IMG_DECLARE(ui_img_472831459);    // assets\icon_scenes_leave-home (1).png
 LV_IMG_DECLARE(ui_img_932150510);    // assets\light-bulb (1).png
 LV_IMG_DECLARE(ui_img_554538158);    // assets\curtains (2).png
 LV_IMG_DECLARE(ui_img_ac_white_png);    // assets\AC_white.png
 LV_IMG_DECLARE(ui_img_1968931049);    // assets\wifi (1).png
+LV_IMG_DECLARE(ui_img_1772094659);    // assets\settings (1).png
+LV_IMG_DECLARE(ui_img_1592976543);    // assets\left-arrow.png
 LV_IMG_DECLARE(ui_img_1704086984);
 
 void ui_init(void);

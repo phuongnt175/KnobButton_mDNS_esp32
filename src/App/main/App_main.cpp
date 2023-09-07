@@ -10,20 +10,11 @@
 #include <stdio.h>
 #include <iostream>
 #include <Arduino_GFX_Library.h>
-#include <WiFiClientSecure.h>
-#include <PubSubClient.h>
-#include <Mid/button/button.hpp>
-#include <Mid/mt8901/mt8901.hpp>
 #include <Arduino.h>
 #include <ESPmDNS.h>
 #include <FastLED.h>
-#include <WiFi.h>
 #include <lvgl.h>
-#include <Mid/api/api.h>
-#include <App/main/main.h>
-// #include <App/CmdMessage/cmdPost.hpp>
-// #include <App/CmdMessage./cmdSet.hpp>
-// #include <App/CmdMessage/cmdStatus.hpp>
+#include <App/main/App_main.h>
 
 /******************************************************************************/
 /*                     PRIVATE TYPES and DEFINITIONS                         */
@@ -47,31 +38,37 @@ CRGB leds[LED_NUM];
 /******************************************************************************/
 extern boolean accessPointMode;
 extern char iphc[eepromTextVariableSize];
+extern char machc[eepromTextVariableSize];
 
+extern String bridgeKey;
+extern String reqId;
+extern char output[4096];
+extern byte mac[6];
+extern char macAddress[18];
+
+extern const char *statusTopic;
+extern const char *controlTopic;
+extern const char *configTopic;
+const char *demoTopic = "client/mobile/ivIRldP5KS/config";
+
+extern WiFiClientSecure  net;
+extern PubSubClient      client;
 /******************************************************************************/
 /*                              PRIVATE DATA                                  */
 /******************************************************************************/
-const char *MQTT_USER = "component"; // leave blank if no credentials used
-const char *MQTT_PASS = " "; // leave blank if no credentials used
-const char *statusTopic = "component/switch_ip/status";
-const char *controlTopic = "component/switch_ip/control";
-const char *configTopic = "component/switch_ip/config";
-
 const char *ep1 = "-1";
 const char *ep2 = "-3";
 const char *ep3 = "-5";
 const char *ep4 = "-7";
 
-char output[4096];
-byte mac[6];
-char macAddress[18]; // Buffer to hold the concatenated MAC address
+const char *ruleId;
+
 long lastTime = 0;
 //==============================================================================
 
 //==============================================================================
-WiFiClientSecure  net;
-PubSubClient      client(net);
-IPAddress         ADDRESS;
+
+IPAddress   ADDRESS;
 
 int PORT = 38883;
 // bool res;
@@ -79,9 +76,6 @@ ButtonStatus btnStatus1 = OFF;
 ButtonStatus btnStatus2 = OFF;
 ButtonStatus btnStatus3 = OFF;
 ButtonStatus btnStatus4 = OFF;
-
-String bridgeKey = "switch_ip";
-String reqId = "abcxyz";
 
 static button_t *g_btn;
 static uint32_t screenWidth;
@@ -92,8 +86,6 @@ static lv_disp_drv_t disp_drv;
 static lv_group_t *lv_group;
 
 extern lv_obj_t* ui_resetWifi;
-
-char TAG[] = "Main";
 
 const char local_root_ca[] PROGMEM = R"=====(
 -----BEGIN CERTIFICATE-----
@@ -128,11 +120,11 @@ Eou01zV/f6o0PDqrnMlYhFi5gTg2bbqLYmLFgyw=
 /*                            PRIVATE FUNCTIONS                               */
 /******************************************************************************/
 void mDNSService();
+void checkIpHCmDNS();
 void init_lv_group();
 void ui_event_button(lv_event_t *e, ButtonStatus& btn_status, char *ep);
-void generateJsonCommandPost(const String& bridgeKey, const String& reqId, char jsonString[4096], char *macDevice);
-void generateJsonCmdStatus(const String& bridgeKey, const String& reqId, char jsonString[1024], char *macDevice, const char *ep, boolean flag);
-void responseGetStatus(const String& bridgeKey, const String& reqId, char jsonString[], char* macDevice);
+void ui_event_scene(lv_event_t *e);
+void spiffsInit();
 
 /******************************************************************************/
 /*                            EXPORTED FUNCTIONS                              */
@@ -179,38 +171,22 @@ void encoder_read(lv_indev_drv_t *drv, lv_indev_data_t *data) {
   }
 }
 
-void connectBroker()
+void outlineBorder(lv_obj_t *ui)
 {
-  while(!client.connected())
-  {
-    ESP_LOGE(TAG, "Attemping MQTT connection...");
-    String clientId = "SW-";
-    clientId += String(random(0xffff), HEX);
-    if(client.connect(clientId.c_str(), MQTT_USER, MQTT_PASS))
-    {
-      client.subscribe(statusTopic);
-      client.subscribe(controlTopic);
-      client.subscribe(configTopic);
-      ESP_LOGE(TAG, "Connected");
-      generateJsonCommandPost(bridgeKey.c_str(), reqId.c_str(), output, macAddress);
-      client.publish(configTopic, output);
-      responseGetStatus(bridgeKey, reqId, output, macAddress);
-      client.publish(statusTopic, output);
-    }
-    else
-    {
-      ESP_LOGE(TAG, "Error rc = %d", client.state());
-      ESP_LOGE(TAG, "try again in 2 seconds");
-      delay(200);
-    }
-  }
+  static lv_style_t style;
+  lv_style_init(&style);
+
+  lv_style_set_outline_width(&style, 5);
+  lv_style_set_outline_color(&style, lv_palette_main(LV_PALETTE_BLUE));
+  lv_style_set_outline_pad(&style, 8);
+
+  lv_obj_add_style(ui, &style, LV_STATE_FOCUS_KEY);
 }
 
 void SubCallback(lv_obj_t *ui, char* message, ButtonStatus& btn_status, const char *ep)
 {
   if(strstr(message, ON_MSG) != NULL)
   {
-    ESP_LOGE(TAG, "ON");
     btn_status = ON;
     if(lv_obj_get_state(ui) == 6 || lv_obj_get_state(ui) == 0)
     {
@@ -218,16 +194,13 @@ void SubCallback(lv_obj_t *ui, char* message, ButtonStatus& btn_status, const ch
       client.publish(statusTopic, output);
       _ui_state_modify(ui, LV_STATE_CHECKED, 2);// _UI_STATE_MODIFY_TOGGLE
     }
-    ESP_LOGE(TAG, "-------------------------------------------------------------");
   }
   else if(strstr(message, OFF_MSG) != NULL)
   {
-    ESP_LOGE(TAG, "OFF");
     btn_status = OFF;
     generateJsonCmdStatus(bridgeKey, reqId, output, macAddress, ep, false);
     client.publish(statusTopic, output);
     _ui_state_modify(ui, LV_STATE_CHECKED, 1);// _UI_STATE_MODIFY_TOGGLE
-    ESP_LOGE(TAG, "-------------------------------------------------------------");
   }
 }
 
@@ -236,42 +209,38 @@ void Callback(char* topic, byte* payload, unsigned int length) {
   payload[length+1] = '\0'; //NULL terminator used to terminate the char array
   char* message = (char*)payload;
   std::string json = std::string(message);
-  char endpoint1[50];
-  char endpoint2[50];
-  char endpoint3[50];
-  char endpoint4[50];
+  char hash1[50];
+  char hash3[50];
+  char hash5[50];
+  char hash7[50];
 
-  sprintf(endpoint1, "%s-%s%s", bridgeKey.c_str(), macAddress, ep1);
-  sprintf(endpoint2, "%s-%s%s", bridgeKey.c_str(), macAddress, ep2);
-  sprintf(endpoint3, "%s-%s%s", bridgeKey.c_str(), macAddress, ep3);
-  sprintf(endpoint4, "%s-%s%s", bridgeKey.c_str(), macAddress, ep4);
+  sprintf(hash1, "%s-%s%s", bridgeKey.c_str(), macAddress, ep1);
+  sprintf(hash3, "%s-%s%s", bridgeKey.c_str(), macAddress, ep2);
+  sprintf(hash5, "%s-%s%s", bridgeKey.c_str(), macAddress, ep3);
+  sprintf(hash7, "%s-%s%s", bridgeKey.c_str(), macAddress, ep4);
 
-  std::string s_ep1 = std::string(endpoint1);
-  std::string s_ep2 = std::string(endpoint2);
-  std::string s_ep3 = std::string(endpoint3);
-  std::string s_ep4 = std::string(endpoint4);
+  std::string s_ep1 = std::string(hash1);
+  std::string s_ep2 = std::string(hash3);
+  std::string s_ep3 = std::string(hash5);
+  std::string s_ep4 = std::string(hash7);
 
   if(String(topic) == controlTopic && strstr(message, "set") != NULL) //
   {
-    ESP_LOGE(TAG, "%s", message);
+    ESP_LOGE("main", "%s", message);
     if((json.find(s_ep1))!= std::string::npos)
     {
-      ESP_LOGE(TAG, "1");
       SubCallback(ui_button1, message, btnStatus1, ep1);
     }
     if((json.find(s_ep2))!= std::string::npos)
     {
-      ESP_LOGE(TAG, "2");
       SubCallback(ui_button2, message, btnStatus2, ep2);
     }
     if((json.find(s_ep3))!= std::string::npos)
     {
-      ESP_LOGE(TAG, "3");
       SubCallback(ui_button3, message, btnStatus3, ep3);
     }
     if((json.find(s_ep4))!= std::string::npos)
     {
-      ESP_LOGE(TAG, "4");
       SubCallback(ui_button4, message, btnStatus4, ep4);
     }
   }
@@ -289,13 +258,56 @@ void Callback(char* topic, byte* payload, unsigned int length) {
   {
     if(strstr(message, macAddress) != NULL)
     {
-      ESP_LOGE(TAG, "disconnected");
+      ESP_LOGE("main", "disconnected");
       eraseEEPROM();
+      WiFi.disconnect();
       client.disconnect(); //disconnect from mqtt
-      ESP.restart();
-
+      for(int i =0; i <= 10; i++)
+      {
+        FastLED.showColor(CHSV(160, 255, 255));
+        delay(200);
+        FastLED.showColor(CHSV(0, 255, 255));
+        delay(200);
+      }
+      return setupApi();
     }
   }
+
+  if(String(topic) == configTopic && strstr(message, "set_scene") != NULL)
+  {
+    const size_t jsonSize = strlen(message) + 1; // Add 1 for null terminator
+    char* json = new char[jsonSize];
+    strncpy(json, message, jsonSize);
+
+    StaticJsonDocument<1024> doc;
+    DeserializationError error = deserializeJson(doc, json);
+    if (error) {
+      ESP_LOGE("main", "deserializeJson() failed: %s", error.c_str());
+    }
+
+    int enable = doc["objects"][0]["data"][0]["params"][0]["ruleconfig"][0]["enable"];
+    ruleId = doc["objects"][0]["data"][0]["params"][0]["ruleconfig"][0]["ruleid"];
+    JsonArray ruleconfig = doc["objects"][0]["data"][0]["params"][0]["ruleconfig"].as<JsonArray>();
+
+    _ui_flag_modify(ui_scene1, LV_OBJ_FLAG_HIDDEN, _UI_MODIFY_FLAG_REMOVE);
+    _ui_flag_modify(ui_scene1, LV_OBJ_FLAG_CLICKABLE, _UI_MODIFY_FLAG_ADD);
+    if(enable == 0) {
+      _ui_state_modify(ui_scene1, LV_STATE_DISABLED, _UI_MODIFY_STATE_ADD);
+    }
+    else {
+      _ui_state_modify(ui_scene1, LV_STATE_DISABLED, _UI_MODIFY_STATE_REMOVE);
+    }
+    advanceStatusCmd(bridgeKey, reqId, ruleconfig, output, macAddress);
+    client.publish(configTopic, output);
+  }
+}
+
+void uiTask(void *pvParameters)
+{
+    while (1) {
+        lv_timer_handler();
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
 }
 
 void setup() {
@@ -308,9 +320,10 @@ void setup() {
   digitalWrite(GFX_BL, HIGH);
 
   FastLED.addLeds<NEOPIXEL, LED_PIN>(leds, LED_NUM);
-  FastLED.showColor(CHSV(64, 255, 255));
+  FastLED.showColor(CHSV(160, 255, 255));
 
   lv_init();
+  xTaskCreate(uiTask, "uiTask", 10000, NULL, 1, NULL);
 
   // Hardware Button
   g_btn = button_attch(3, 0, 10);
@@ -326,7 +339,7 @@ void setup() {
 
   if (!disp_draw_buf) {
     //Serial.println("LVGL disp_draw_buf allocate failed!");
-    ESP_LOGE(TAG, "LVGL disp_draw_buf allocate failed!");
+    ESP_LOGE("main", "LVGL disp_draw_buf allocate failed!");
   } else {
     lv_disp_draw_buf_init(&draw_buf, disp_draw_buf, NULL, screenWidth * 32);
 
@@ -346,40 +359,46 @@ void setup() {
     indev_drv.type = LV_INDEV_TYPE_ENCODER;
     lv_indev_drv_register(&indev_drv);
   }
+
+  init_lv_group();
+  ui_init();
+  outlineBorder(ui_button1);
+  outlineBorder(ui_button2);
+  outlineBorder(ui_button3);
+  outlineBorder(ui_button4);
+  outlineBorder(ui_resetWifi);
+  outlineBorder(ui_sceneSetting);
+  outlineBorder(ui_back);
   setupAP();
   setupApi();
-
   WiFi.macAddress(mac);
   sprintf(macAddress, "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 
   if(!MDNS.begin("esp32")) {
-    //Serial.println("Error starting mDNS");
-    ESP_LOGE(TAG, "error starring mDNS!");
+    ESP_LOGE("main", "error starring mDNS!");
     return;
   }
   
   mDNSService();
-  ADDRESS = MDNS.queryHost("HCD84F");
   net.setInsecure();
   net.setCACert(local_root_ca);
   client.setKeepAlive(60);
   client.setBufferSize(4096);
   client.setServer(iphc, PORT);
   client.setCallback(Callback);
-  init_lv_group();
-  ui_init();
 }
 
 void loop() {
   long now = millis();
-  lv_timer_handler();
   handleAP();
   if(!client.connected())
   {
     client.setKeepAlive(60); // setting keep alive to 60 seconds
     if(accessPointMode == false)
     {
+      FastLED.showColor(CHSV(128, 255, 255)); //led aqua when disconnected mqtt
       connectBroker();
+      checkIpHCmDNS();
     }
   }
   else{
@@ -392,6 +411,7 @@ void loop() {
     client.publish(statusTopic, output);
     lastTime = now;
   }
+  vTaskDelay(pdMS_TO_TICKS(100));
 }
 
 void init_lv_group() {
@@ -412,24 +432,55 @@ void init_lv_group() {
 
 void mDNSService()
 {
-  MDNS.addService(SERVICE_NAME, SERVICE_PROTOCOL, SERVICE_PORT);
-  MDNS.addServiceTxt(SERVICE_NAME, SERVICE_PROTOCOL, "manufacturer", "LUMI");
-  MDNS.addServiceTxt(SERVICE_NAME, SERVICE_PROTOCOL, "mac", "f4:12:fa:cf:4e:b4");
+  // MDNS.addService(SERVICE_NAME, SERVICE_PROTOCOL, SERVICE_PORT);
+  // MDNS.addServiceTxt(SERVICE_NAME, SERVICE_PROTOCOL, "manufacturer", "LUMI");
+  // MDNS.addServiceTxt(SERVICE_NAME, SERVICE_PROTOCOL, "mac", "f4:12:fa:cf:4e:b4");
   
   int nrOfServices = MDNS.queryService("lumismarthome", SERVICE_PROTOCOL);
   if (nrOfServices == 0) {
-    ESP_LOGE(TAG, "No services were found.");
+    ESP_LOGE("main", "No services were found.");
   } 
   else {
-    ESP_LOGE(TAG, "Number of services found: %d", nrOfServices);
+    ESP_LOGE("main", "Number of services found: %d", nrOfServices);
     for (int i = 0; i < nrOfServices; i=i+1) 
     {
-      ESP_LOGE(TAG, "---------------");
-      ESP_LOGE(TAG, "Hostname: %s", MDNS.hostname(i));
-      ESP_LOGE(TAG, "IP address: %s", MDNS.IP(i).toString().c_str());
-      ESP_LOGE(TAG, "Port: %d", MDNS.port(i));
-      ESP_LOGE(TAG, "MAC: %s", MDNS.txt(i, "mac").c_str());
-      ESP_LOGE(TAG, "---------------");
+      ESP_LOGE("main", " ");
+      ESP_LOGE("main", "Hostname: %s", MDNS.hostname(i));
+      ESP_LOGE("main", "IP address: %s", MDNS.IP(i).toString().c_str());
+      ESP_LOGE("main", "Port: %d", MDNS.port(i));
+      ESP_LOGE("main", "MAC: %s", MDNS.txt(i, "mac").c_str());
+      ESP_LOGE("main", " ");
+    }
+  }
+}
+
+void checkIpHCmDNS()
+{
+  int nrOfServices = MDNS.queryService("lumismarthome", SERVICE_PROTOCOL);
+  if (nrOfServices == 0) {
+    return;
+  } 
+  else {
+    ESP_LOGE("main", "Number of services found: %d", nrOfServices);
+    for (int i = 0; i < nrOfServices; i++) 
+    {
+      String macString = MDNS.txt(i, "mac");
+      for (int j = 0; j < 18; j++) {
+        macString[j] = toupper(macString[j]);
+      }
+      const char* scanMac = macString.c_str();
+      ESP_LOGE("main", "%s", scanMac);
+      char scanIP[16];
+      sprintf(scanIP, "%s", MDNS.IP(i).toString().c_str());
+      ESP_LOGE("main", "%s", scanIP);
+      if(strcmp(machc, scanMac) == 0)
+      {
+        saveHCInfoToEEPPROM(scanIP, machc);
+        readHCInfoFromEEPROM(iphc, machc);
+        client.setServer(iphc, PORT);
+        ESP_LOGE("main", "change iphc");
+        return connectBroker();
+      }
     }
   }
 }
@@ -457,6 +508,22 @@ void ui_event_button(lv_event_t *e, ButtonStatus& btn_status, const char *ep) {
   }
 }
 
+void ui_event_scene(lv_event_t *e)
+{
+  lv_event_code_t event_code = lv_event_get_code(e);
+  lv_obj_t *target = lv_event_get_target(e);
+  if(event_code == LV_EVENT_CLICKED)
+  {
+      activeRuleCmd(reqId, output, ruleId);
+      client.publish(controlTopic, output);
+  }
+}
+
+void ui_event_scene1(lv_event_t *e)
+{
+  ui_event_scene(e);
+}
+
 void ui_event_button1(lv_event_t *e) {
   ui_event_button(e, btnStatus1, ep1);
 }
@@ -473,151 +540,47 @@ void ui_event_button4(lv_event_t *e) {
   ui_event_button(e, btnStatus4, ep4);
 }
 
-void generateJsonCommandPost(const String& bridgeKey, const String& reqId, char jsonString[4096], char *macDevice) 
+void spiffsInit()
 {
-  StaticJsonDocument<4096> doc;
-  
-  doc["cmd"] = "post";
-  JsonArray objects = doc.createNestedArray("objects");
-  JsonObject object = objects.createNestedObject();
-  object["type"] = "devices_local";
-  object["bridge_key"] = bridgeKey;
-
-  JsonArray data = object.createNestedArray("data");
-  // Generating data items
-  for (int i = 1; i <= 7; i =i+2) {
-    JsonObject dataItem = data.createNestedObject();
-    dataItem["type"] = "SWITCH";
-    dataItem["brigde_key"] = bridgeKey;
-    dataItem["hash"] = bridgeKey + String("-") + String(macDevice) + String("-") + String(i); //get mac
-
-    JsonObject attr = dataItem.createNestedObject("attr");
-    attr["McuInfo"]["GlassType"] = 2;
-    attr["McuInfo"]["RelayType"] = 0;
-    attr["deviceInfo"]["Manufacturer"] = "Lumi R&D";
-    attr["deviceInfo"]["ModelId"] = "LM-SZDM4";
-    attr["sceneConfig"]["lock_touch"] = false;
-    attr["sceneConfig"]["output"]["delay"] = 0;
-    attr["sceneConfig"]["output"]["mode"] = 0;
-    attr["sceneConfig"]["touch_mode"] = 0;
-    // Create sceneSetting array and add objects
-    JsonArray sceneSetting = attr.createNestedArray("sceneSetting");
-    JsonObject sceneSettingItem1 = sceneSetting.createNestedObject();
-    sceneSettingItem1["name"] = "lock_touch";
-    JsonObject sceneSettingItem2 = sceneSetting.createNestedObject();
-    sceneSettingItem2["name"] = "touch_mode";
-    JsonArray traits = dataItem.createNestedArray("traits");
-    JsonObject trait = traits.createNestedObject();
-    trait["is_main"] = true;
-    trait["name"] = "OnOff";
-
-    doc["reqid"] = reqId;
-    doc["source"] = bridgeKey;
+  if (!SPIFFS.begin(true)) {
+    ESP_LOGE("main", "An Error has occurred while mounting SPIFFS");
+    return;
   }
-  serializeJson(doc, jsonString, 4096);
+
+  if (SPIFFS.exists("/data.txt")) {
+    ESP_LOGE("main", "File already exists");
+  }
+
+  File fileToAppend = SPIFFS.open("/data.txt", FILE_APPEND);
+
+  if (!fileToAppend) {
+    ESP_LOGE("main","There was an error opening the file for appending");
+    return;
+  }
+
+  if (fileToAppend.println("json")) {
+    ESP_LOGE("main","File content was appended");
+  } else {
+    ESP_LOGE("main","File append failed");
+  }
+
+  fileToAppend.close();
+
+  File fileToRead = SPIFFS.open("/data.txt", FILE_READ);
+
+  if (!fileToRead) {
+    ESP_LOGE("main", "There was an error opening the file for Reading");
+    return;
+  }
+
+  String readFile = String(fileToRead.read());
+
+  ESP_LOGE("main", "read file: %s", fileToRead.readString().c_str());
+ 
+  fileToRead.close();
 }
 
-void generateJsonCmdStatus(const String& bridgeKey, const String& reqId, char jsonString[1024], char *macDevice, const char *ep, boolean flag)
+void addDeleteScene(char *message)
 {
-  StaticJsonDocument<1024> doc;
-
-  // Add command and request ID
-  doc["cmd"] = "status";
-  // Create an array of objects for devices
-  JsonArray devices = doc.createNestedArray("objects");
-
-  // Create a device object
-  JsonObject device = devices.createNestedObject();
-  device["bridge_key"] = bridgeKey;
-  device["type"] = "devices";
-
-  // Create an array of data for the device
-  JsonArray data = device.createNestedArray("data");
-
-  // Create a data object for the device
-  JsonObject dataObject = data.createNestedObject();
-
- // dataObject["hash"] = bridgeKey + String(macDevice) + String(ep);
-  dataObject["hash"] =  bridgeKey + String("-") + macDevice + String(ep);
-  dataObject["type"] = "SWITCH";
-
-  // Create a states object for the data
-  JsonObject states = dataObject.createNestedObject("states");
-  states["OnOff"]["on"] = flag;
-  doc["reqid"] = reqId;
-  doc["source"] = bridgeKey;
-  serializeJson(doc, jsonString, 1024);
-}
-
-void responseGetStatus(const String& bridgeKey, const String& reqId, char jsonString[], char* macDevice)
-{
-
-  StaticJsonDocument<4096> doc;
-  doc.clear();
-
-  boolean flag[8];
-  if(lv_obj_get_state(ui_button1) == 6 || lv_obj_get_state(ui_button1) == 0)
-  {
-    flag[1] = false;
-  }
-  else if(lv_obj_get_state(ui_button1) == 7 || lv_obj_get_state(ui_button1) == 1)
-  {
-    flag[1] = true;
-  }
-  if(lv_obj_get_state(ui_button2) == 6 || lv_obj_get_state(ui_button2) == 0)
-  {
-    flag[3] = false;
-  }
-  else if(lv_obj_get_state(ui_button2) == 7 || lv_obj_get_state(ui_button2) == 1)
-  {
-    flag[3] = true;
-  }
-
-  if(lv_obj_get_state(ui_button3) == 6 || lv_obj_get_state(ui_button3) == 0)
-  {
-    flag[5] = false;
-  }
-  else if(lv_obj_get_state(ui_button3) == 7 || lv_obj_get_state(ui_button3) == 1)
-  {
-    flag[5] = true;
-  }
-
-  if(lv_obj_get_state(ui_button4) == 6 || lv_obj_get_state(ui_button4) == 0)
-  {
-    flag[7] = false;
-  }
-  else if(lv_obj_get_state(ui_button4) == 7 || lv_obj_get_state(ui_button4) == 1)
-  {
-    flag[7] = true;
-  }
-  // Add command and request ID
-  doc["cmd"] = "status";
-  // Create an array of objects for devices
-  JsonArray objects = doc.createNestedArray("objects");
-
-  // Create a device object
-  JsonObject device = objects.createNestedObject();
-  device["bridge_key"] = bridgeKey;
-  device["type"] = "devices";
   
-  // Create an array of data for the device
-  JsonArray data = device.createNestedArray("data");
-  for (int i = 1; i <= 7; i =i+2){
-    // Create a data object for the device
-    JsonObject dataObject = data.createNestedObject();
-    dataObject["hash"] = String(bridgeKey) + String("-") + String(macDevice) + String("-") + String(i);
-    dataObject["type"] = "SWITCH";
-
-    // Create a states object for the data
-    JsonObject states = dataObject.createNestedObject("states");
-    states["OnOff"]["on"] = flag[i];
-    if(i == 7)
-    {
-      break;
-    }
-  }
-  doc["reqid"] = reqId;
-  doc["source"] = bridgeKey;
-  // Serialize the JSON document to a string
-  serializeJson(doc, jsonString, 4096);
 }

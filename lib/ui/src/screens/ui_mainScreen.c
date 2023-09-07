@@ -27,8 +27,7 @@ void ui_mainScreen_screen_init(void)
     lv_obj_set_style_bg_color(ui_button1, lv_color_hex(0x3399FF), LV_STATE_CHECKED);
     lv_obj_set_style_bg_opa(ui_button1, 50, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_opa(ui_button1, 150, LV_STATE_CHECKED);
-    lv_obj_set_style_bg_img_src(ui_button1, &ui_img_932150510, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_img_src(ui_button1,&ui_img_1704086984, LV_STATE_CHECKED);
+    lv_obj_set_style_bg_img_src(ui_button1, &ui_img_472831459, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     ui_button2 = lv_btn_create(ui_mainScreen);
     lv_obj_set_width(ui_button2, 150);
@@ -52,7 +51,7 @@ void ui_mainScreen_screen_init(void)
     lv_obj_set_width(ui_button3, 150);
     lv_obj_set_height(ui_button3, 150);
     lv_obj_set_x(ui_button3, 80);
-    lv_obj_set_y(ui_button3, -70);
+    lv_obj_set_y(ui_button3, -90);
     lv_obj_set_align(ui_button3, LV_ALIGN_BOTTOM_LEFT);
     lv_obj_add_flag(ui_button3, LV_OBJ_FLAG_CHECKABLE);     /// Flags
     lv_obj_clear_flag(ui_button3, LV_OBJ_FLAG_PRESS_LOCK | LV_OBJ_FLAG_CLICK_FOCUSABLE | LV_OBJ_FLAG_GESTURE_BUBBLE |
@@ -69,7 +68,7 @@ void ui_mainScreen_screen_init(void)
     lv_obj_set_width(ui_button4, 150);
     lv_obj_set_height(ui_button4, 150);
     lv_obj_set_x(ui_button4, -80);
-    lv_obj_set_y(ui_button4, -70);
+    lv_obj_set_y(ui_button4, -90);
     lv_obj_set_align(ui_button4, LV_ALIGN_BOTTOM_RIGHT);
     lv_obj_add_flag(ui_button4, LV_OBJ_FLAG_CHECKABLE);     /// Flags
     lv_obj_clear_flag(ui_button4, LV_OBJ_FLAG_PRESS_LOCK | LV_OBJ_FLAG_CLICK_FOCUSABLE | LV_OBJ_FLAG_GESTURE_BUBBLE |
@@ -85,8 +84,8 @@ void ui_mainScreen_screen_init(void)
     ui_resetWifi = lv_btn_create(ui_mainScreen);
     lv_obj_set_width(ui_resetWifi, 50);
     lv_obj_set_height(ui_resetWifi, 50);
-    lv_obj_set_x(ui_resetWifi, 0);
-    lv_obj_set_y(ui_resetWifi, 200);
+    lv_obj_set_x(ui_resetWifi, -50);
+    lv_obj_set_y(ui_resetWifi, 190);
     lv_obj_set_align(ui_resetWifi, LV_ALIGN_CENTER);
     lv_obj_clear_flag(ui_resetWifi, LV_OBJ_FLAG_PRESS_LOCK | LV_OBJ_FLAG_CLICK_FOCUSABLE | LV_OBJ_FLAG_GESTURE_BUBBLE |
                       LV_OBJ_FLAG_SNAPPABLE | LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_SCROLL_ELASTIC | LV_OBJ_FLAG_SCROLL_MOMENTUM |
@@ -98,6 +97,21 @@ void ui_mainScreen_screen_init(void)
     lv_obj_set_style_bg_opa(ui_resetWifi, 150, LV_STATE_CHECKED);
     lv_obj_set_style_bg_img_src(ui_resetWifi, &ui_img_1968931049, LV_PART_MAIN | LV_STATE_DEFAULT);
 
+    ui_sceneSetting = lv_btn_create(ui_mainScreen);
+    lv_obj_set_width(ui_sceneSetting, 50);
+    lv_obj_set_height(ui_sceneSetting, 50);
+    lv_obj_set_x(ui_sceneSetting, 50);
+    lv_obj_set_y(ui_sceneSetting, 190);
+    lv_obj_set_align(ui_sceneSetting, LV_ALIGN_CENTER);
+    lv_obj_clear_flag(ui_sceneSetting, LV_OBJ_FLAG_PRESS_LOCK | LV_OBJ_FLAG_CLICK_FOCUSABLE | LV_OBJ_FLAG_GESTURE_BUBBLE |
+                      LV_OBJ_FLAG_SNAPPABLE | LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_SCROLL_ELASTIC | LV_OBJ_FLAG_SCROLL_MOMENTUM |
+                      LV_OBJ_FLAG_SCROLL_CHAIN);     /// Flags
+    lv_obj_set_style_radius(ui_sceneSetting, 200, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(ui_sceneSetting, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_opa(ui_sceneSetting, 50, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_img_src(ui_sceneSetting, &ui_img_1772094659, LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    lv_obj_add_event_cb(ui_sceneSetting, ui_event_sceneSetting, LV_EVENT_ALL, NULL);
     lv_obj_add_event_cb(ui_resetWifi, ui_event_resetWifi, LV_EVENT_ALL, NULL);
     lv_obj_add_event_cb(ui_button1, ui_event_button1, LV_EVENT_ALL, NULL);
     lv_obj_add_event_cb(ui_button2, ui_event_button2, LV_EVENT_ALL, NULL);

@@ -3,8 +3,11 @@
 #include <EEPROM.h>
 #include <esp_log.h>
 #include <ui.h>
+#include <WiFi.h>
+#include <Mid/mqtt/Mid_mqtt.h>
 
 #define eepromTextVariableSize 33
+
 
 //=======================================================================================
 void saveWiFiToEEPPROM(char* ssid_, char* pass_);

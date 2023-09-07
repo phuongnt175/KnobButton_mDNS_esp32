@@ -1,5 +1,0 @@
-enum ButtonStatus 
-{
-    OFF,
-    ON
-};

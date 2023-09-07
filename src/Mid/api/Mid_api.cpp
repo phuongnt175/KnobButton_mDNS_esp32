@@ -1,9 +1,39 @@
-#include <Mid/api/api.h>
+#include <Mid/api/Mid_api.h>
 
 const char *SSID = " ";
 const char *PWD = " ";
 const char *IPHC = " ";
 const char *MACHC = " ";
+
+char empty[] = " ";
+
+extern WiFiClientSecure  net;
+extern PubSubClient client;
+
+const char key_mqtt[] PROGMEM = R"=====(
+-----BEGIN CERTIFICATE-----
+MIIDqTCCApGgAwIBAgIJAK7m4E783cWuMA0GCSqGSIb3DQEBCwUAMGsxCzAJBgNV
+BAYTAlZOMQswCQYDVQQIDAJITjELMAkGA1UEBwwCSE4xDTALBgNVBAoMBExVTUkx
+CzAJBgNVBAsMAlJEMQ4wDAYDVQQDDAVsb2NhbDEWMBQGCSqGSIb3DQEJARYHYWJj
+QDEyMzAeFw0xOTA5MjMxMDU0NDZaFw0yOTA5MjAxMDU0NDZaMGsxCzAJBgNVBAYT
+AlZOMQswCQYDVQQIDAJITjELMAkGA1UEBwwCSE4xDTALBgNVBAoMBExVTUkxCzAJ
+BgNVBAsMAlJEMQ4wDAYDVQQDDAVsb2NhbDEWMBQGCSqGSIb3DQEJARYHYWJjQDEy
+MzCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBALoCzS2fxY3waRvIhewR
+BIyBgkFQlagZYV7CGV0xorxHtjJs3+Q4nGxn/Xvl2dF4HE3WstJ+1JcSLYuLgpB3
+Z9es68jvlCWX4zIa8Gne27mQSncdTuRV3K038RCKD8Ms00f1xd7cQFNZCHxPSdlV
+TXydu4nXwsL8FAzOUXiHB7KT6s2F3JEPqhn9pgNGe7ciQZTfdTSEQPJ5w2wWrnnQ
+7FccMxQmyyJNMfM3cwv26yhEFTIIKX9/9JCbqe75QIyeAxoTAUmJWtMvBBjT+HJ0
+daGM1N60f6PsBYI4Y5o+NUsJa1ahPNvX44M4q/FxhbAyYOruztMyJFyYpiyxZpkO
+8QsCAwEAAaNQME4wHQYDVR0OBBYEFO6WUjahqnRNCyzA54s78gae3LTsMB8GA1Ud
+IwQYMBaAFO6WUjahqnRNCyzA54s78gae3LTsMAwGA1UdEwQFMAMBAf8wDQYJKoZI
+hvcNAQELBQADggEBAF1ElC5P2hDpnaOiFarHkkVvvwrdry3H/jCckdffkUZFoAqa
+AmeY1Zv4czcEVNDdkGh5nBSBlXxySvpR16Y6HM+4DlBlhv1FuBgR+LdHIU1jH86u
+GNFX/Fq/jMv4rxBdJP9dgWnMW2vAnucU1DHqSgDD2TDFrvuz5EJADh73FKByYG7a
+nVI0Ke+huGvqVv9ynmHBmWE1J4DjGD08IPypgTiS7GkRG3V/KpLpyV2M9FEAbmeP
+KENRFSPMPeyRyfzitR98wTtsORlF4I1+fYcPGSh0pQK1mK1X1bI/BWmtnRMqBSXD
+Eou01zV/f6o0PDqrnMlYhFi5gTg2bbqLYmLFgyw=
+-----END CERTIFICATE-----
+)=====";
 
 char ssid[eepromTextVariableSize] = " ";
 char pass[eepromTextVariableSize] = " ";
@@ -16,10 +46,9 @@ IPAddress subnet(255, 255, 255, 0);
 
 boolean accessPointMode = false; // set true every time started as AP mode
 boolean debug = true;
-unsigned long lastUpdatedTime = 0;
 
+int softApStatus = 0;
 int pushDownCounter = 0;
-int lastConnectedStatus = 0;
 
 WebServer server(80);
 StaticJsonDocument<4096> jsonDocument;
@@ -102,22 +131,17 @@ void handlePut()
   ESP_LOGE("main", "after api pass change to : %s", pass);
   ESP_LOGE("main", "IP HC: %s", iphc);
   ESP_LOGE("main", "Mac HC: %s", machc);
+  
+  accessPointMode = false;
+  softApStatus = 0;
+  saveStatusToEeprom(0);
+  WiFi.enableAP(false);
+  WiFi.softAPdisconnect(true);
+  WiFi.mode(WIFI_STA); //disable softAP
 
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, pass);
+  client.setServer(iphc, 38883);
 
-  ESP_LOGE("main", "%s", ssid);
-  ESP_LOGE("main", "%s", pass);
-
-  if(WiFi.status() != WL_CONNECTED)
-  {
-    ESP_LOGE("main", " . ");
-    delay(500);
-  }
-
-  ESP_LOGE("main", "WiFi Connected : %s", WiFi.SSID());
-  delay(500);
-  ESP.restart();
+  return setupApi();
 }
 
 
@@ -141,13 +165,21 @@ void setupApi()
     }
   }
   ESP_LOGE("main", "WiFi Connected : %s", WiFi.SSID());
-  ESP_LOGE("main", "%s", WiFi.localIP().toString());
+  ESP_LOGE("main", "%s", WiFi.localIP().toString().c_str());
   }
+  lv_obj_set_style_bg_color(ui_resetWifi, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_bg_opa(ui_resetWifi, 50, LV_PART_MAIN | LV_STATE_DEFAULT);
 }
 
 void accessPoint_init()
 {
-  WiFi.softAP("AP mode esp32", "LumiVn@2023");
+  byte mac1[6];
+  char mac1Address[18];
+  WiFi.macAddress(mac1);
+  sprintf(mac1Address, "%02X:%02X",mac1[4], mac1[5]);
+  char apSSID[33];
+  sprintf(apSSID, "SwitchIP_%s", mac1Address);
+  WiFi.softAP(apSSID, "LumiVn@2023");
   if(debug)
   {
     ESP_LOGE("main", "AccessPoint IP: %s", WiFi.softAPIP().toString());
@@ -162,45 +194,38 @@ void accessPoint_init()
   //delay(100);
 }
 
-void checkWiFiConnection()
-{
-  if(WiFi.status() != WL_CONNECTED)
-  {
-    if(lastConnectedStatus == 1)
-    {
-      ESP_LOGE("main", "WiFi disconnected");
-    }
-    lastConnectedStatus = 0;
-    //delay(500);
-  }
-  else
-  {
-    if(lastConnectedStatus == 0)
-    {
-      ESP_LOGE("main", "WiFi connected to: %s", ssid);
-      ESP_LOGE("main", "IP address: %s", WiFi.localIP().toString());
-    }
-  lastConnectedStatus = 1;
-  }
-}
-
-
 void ui_event_resetWifi(lv_event_t * e)
 {
   lv_event_code_t event_code = lv_event_get_code(e);
   lv_obj_t * target = lv_event_get_target(e);
   while(event_code == LV_EVENT_LONG_PRESSED) //detect button released, run the DemandWiFi function
   {
-    pushDownCounter++;
-    if (debug) ESP_LOGE("main", "%d", pushDownCounter);
-    delay(1000);
-    if (pushDownCounter == 5) { // after 2 seconds the board will be restarted
-    if (!accessPointMode) saveStatusToEeprom(2); // write the number 2 to the eeprom
-    delay(500);
-    ESP.restart();
+    switch (softApStatus)
+    {
+      case 1:
+        if (accessPointMode) saveStatusToEeprom(0);
+        delay(500);
+        softApStatus = 0;
+        lv_obj_set_style_bg_color(ui_resetWifi, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
+        lv_obj_set_style_bg_opa(ui_resetWifi, 50, LV_PART_MAIN | LV_STATE_DEFAULT);
+        ESP_LOGE("api","off ap");
+        return setupAP();
+      break;
+      
+      case 0:
+        if (!accessPointMode) saveStatusToEeprom(2);
+        delay(500);
+        softApStatus = 1;
+        lv_obj_set_style_bg_color(ui_resetWifi, lv_color_hex(0x3399FF), LV_PART_MAIN | LV_STATE_DEFAULT);
+        lv_obj_set_style_bg_opa(ui_resetWifi, 150, LV_PART_MAIN | LV_STATE_DEFAULT);
+        ESP_LOGE("api","on ap");
+        return setupAP();
+      break;
+
+      default:
+      break;
     }
   }
-  pushDownCounter = 0;
 }
 
 //====================== EEPROM necessary functions ==============
@@ -269,6 +294,10 @@ return value;
 
 void eraseEEPROM() {
   EEPROM.begin(eepromBufferSize);
+  saveWiFiToEEPPROM(empty, empty);
+  saveHCInfoToEEPPROM(empty, empty);
+  readWiFiFromEEPROM(ssid, pass);
+  readHCInfoFromEEPROM(iphc, machc);
   for (int address = 0; address < eepromBufferSize; address++) {
     EEPROM.write(address, 0);
   }
@@ -287,6 +316,14 @@ void setupAP(void)
   else if(st != 0) {
     saveWiFiToEEPPROM(ssid, pass);
     saveHCInfoToEEPPROM(iphc, machc);
+  }
+  else if(st == 0)
+  {
+    WiFi.enableAP(false);
+    WiFi.softAPdisconnect(true);
+    WiFi.mode(WIFI_STA); //disable softAP
+    ESP_LOGE("api", "Disable AP mode");
+    accessPointMode = false;
   }
 
   ESP_LOGE("main", "AP mode = %s", String(accessPointMode));

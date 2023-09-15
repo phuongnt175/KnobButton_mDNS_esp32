@@ -137,7 +137,7 @@ void saveSceneNum(uint8_t value);
 uint8_t getSceneNum();
 void uiGroup1();
 void uiGroup2();
-void sceneModify(lv_obj_t* ui,lv_obj_t * ui_label, int num);
+void sceneModify(lv_obj_t* ui, lv_obj_t* ui_label, const lv_img_dsc_t* ui_image, int num);
 void writeRuleId(JsonArray json);
 void updateScene(uint8_t num);
 
@@ -177,7 +177,6 @@ void my_disp_flush(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *color
 void encoder_read(lv_indev_drv_t *drv, lv_indev_data_t *data) {
   static int16_t cont_last = 0;
   int16_t cont_now = mt8901_get_count();
-  ESP_LOGE("main", "%d", cont_now);
   if(abs(cont_now - cont_last) >= 4)
   {
     data->enc_diff = ECO_STEP(cont_now - cont_last);
@@ -664,18 +663,19 @@ uint8_t getSceneNum() {
 }
 void sceneModify(lv_obj_t* ui, lv_obj_t* ui_label, int num)
 {
-  lv_img_dsc_t ui_image[] = {ui_img_minus1_png, ui_img_0_png, ui_img_1_png, ui_img_2_png, ui_img_3_png, ui_img_4_png, ui_img_5_png,
-  ui_img_6_png, ui_img_7_png, ui_img_8_png, ui_img_9_png, ui_img_10_png, ui_img_11_png, ui_img_12_png, ui_img_13_png, ui_img_14_png,
-  ui_img_15_png, ui_img_16_png, ui_img_17_png, ui_img_18_png, ui_img_19_png, ui_img_20_png, ui_img_21_png, ui_img_22_png, ui_img_23_png,
-  ui_img_24_png, ui_img_25_png, ui_img_26_png, ui_img_27_png, ui_img_28_png, ui_img_29_png, ui_img_30_png, ui_img_31_png, ui_img_32_png,
-  ui_img_33_png, ui_img_34_png, ui_img_35_png, ui_img_36_png, ui_img_37_png, ui_img_38_png};
+  const lv_img_dsc_t* image_array[40] = {&ui_img_minus1_png, &ui_img_0_png, &ui_img_1_png, &ui_img_2_png, &ui_img_3_png, &ui_img_4_png, &ui_img_5_png,
+  &ui_img_6_png, &ui_img_7_png, &ui_img_8_png, &ui_img_9_png, &ui_img_10_png, &ui_img_11_png, &ui_img_12_png, &ui_img_13_png, &ui_img_14_png,
+  &ui_img_15_png, &ui_img_16_png, &ui_img_17_png, &ui_img_18_png, &ui_img_19_png, &ui_img_20_png, &ui_img_21_png, &ui_img_22_png, &ui_img_23_png,
+  &ui_img_24_png, &ui_img_25_png, &ui_img_26_png, &ui_img_27_png, &ui_img_28_png, &ui_img_29_png, &ui_img_30_png, &ui_img_31_png, &ui_img_32_png,
+  &ui_img_33_png, &ui_img_34_png, &ui_img_35_png, &ui_img_36_png, &ui_img_37_png, &ui_img_38_png};
 
   enableStatus = readEnableValue("/ruleId.txt", num);
   icon = readIconKeyValue("/ruleId.txt", num);
   name = readNameValue("/ruleId.txt", num);
   ESP_LOGE("main", "icon is : %s", icon);
+  int iconValue = std::stoi(icon) + 1;
   _ui_state_modify(ui, LV_STATE_DISABLED, enableStatus);
-  lv_obj_set_style_bg_img_src( ui, &ui_img_19_png, LV_PART_MAIN | LV_STATE_DEFAULT );
+  lv_obj_set_style_bg_img_src( ui, image_array[iconValue], LV_PART_MAIN | LV_STATE_DEFAULT );
   lv_label_set_text(ui_label, name);
 
   free((void*)name);
@@ -689,7 +689,7 @@ void updateScene(uint8_t num) {
   for (uint8_t i = 0; i < num; i++) {
     ESP_LOGE("main", "i = %d", i);
     ESP_LOGE("main", "num = %d", num);
-    sceneModify(ui_scenes[i], ui_canhs[i],i + 1);
+    sceneModify(ui_scenes[i], ui_canhs[i], i + 1);
   }
   for(uint8_t i = num; i < 5; i++) //i < max_scene
   {

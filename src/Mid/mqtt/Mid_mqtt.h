@@ -4,3 +4,4 @@
 #include <Mid/jsonMessage/Mid_jsonMessage.h>
 
 void connectBroker();
+void jsonPostCmdTask(void* pvParameters);

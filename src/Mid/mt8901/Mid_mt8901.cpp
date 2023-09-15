@@ -3,7 +3,7 @@
 #include "freertos/queue.h"
 #include "driver/pcnt.h"
 
-#define PCNT_H_LIM_VAL INT16_MAX
+#define PCNT_H_LIM_VAL INT16_MAX //16
 #define PCNT_L_LIM_VAL INT16_MIN
 
 static pcnt_unit_t unit = PCNT_UNIT_0;

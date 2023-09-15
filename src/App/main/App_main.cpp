@@ -46,13 +46,19 @@ extern char output[4096];
 extern byte mac[6];
 extern char macAddress[18];
 
-extern const char *statusTopic;
-extern const char *controlTopic;
-extern const char *configTopic;
-const char *demoTopic = "client/mobile/ivIRldP5KS/config";
+extern char statusTopic[50];
+extern char controlTopic[50];
+extern char configTopic[50];
+extern char deviceTopic[50];
+
+// extern int enableStatus;
+// extern const char *icon;
+// extern const char *name;
 
 extern WiFiClientSecure  net;
 extern PubSubClient      client;
+
+extern bool receivedAckMessage;
 /******************************************************************************/
 /*                              PRIVATE DATA                                  */
 /******************************************************************************/
@@ -60,10 +66,12 @@ const char *ep1 = "-1";
 const char *ep2 = "-3";
 const char *ep3 = "-5";
 const char *ep4 = "-7";
-
-const char *ruleId;
-
 long lastTime = 0;
+JsonArray ruleConfigValue_set;
+uint8_t sceneNum;
+int enableStatus;
+const char *icon;
+const char *name;
 //==============================================================================
 
 //==============================================================================
@@ -123,8 +131,15 @@ void mDNSService();
 void checkIpHCmDNS();
 void init_lv_group();
 void ui_event_button(lv_event_t *e, ButtonStatus& btn_status, char *ep);
-void ui_event_scene(lv_event_t *e);
+void ui_event_scene(lv_event_t *e, int num);
 void spiffsInit();
+void saveSceneNum(uint8_t value);
+uint8_t getSceneNum();
+void uiGroup1();
+void uiGroup2();
+void sceneModify(lv_obj_t* ui,lv_obj_t * ui_label, int num);
+void writeRuleId(JsonArray json);
+void updateScene(uint8_t num);
 
 /******************************************************************************/
 /*                            EXPORTED FUNCTIONS                              */
@@ -162,25 +177,17 @@ void my_disp_flush(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *color
 void encoder_read(lv_indev_drv_t *drv, lv_indev_data_t *data) {
   static int16_t cont_last = 0;
   int16_t cont_now = mt8901_get_count();
-  data->enc_diff = ECO_STEP(cont_now - cont_last);
-  cont_last = cont_now;
+  ESP_LOGE("main", "%d", cont_now);
+  if(abs(cont_now - cont_last) >= 4)
+  {
+    data->enc_diff = ECO_STEP(cont_now - cont_last);
+    cont_last = cont_now;
+  }
   if (button_isPressed(g_btn)) {
     data->state = LV_INDEV_STATE_PR;
   } else {
     data->state = LV_INDEV_STATE_REL;
   }
-}
-
-void outlineBorder(lv_obj_t *ui)
-{
-  static lv_style_t style;
-  lv_style_init(&style);
-
-  lv_style_set_outline_width(&style, 5);
-  lv_style_set_outline_color(&style, lv_palette_main(LV_PALETTE_BLUE));
-  lv_style_set_outline_pad(&style, 8);
-
-  lv_obj_add_style(ui, &style, LV_STATE_FOCUS_KEY);
 }
 
 void SubCallback(lv_obj_t *ui, char* message, ButtonStatus& btn_status, const char *ep)
@@ -273,32 +280,150 @@ void Callback(char* topic, byte* payload, unsigned int length) {
     }
   }
 
-  if(String(topic) == configTopic && strstr(message, "set_scene") != NULL)
+  if(String(topic) == configTopic && strstr(message, "set_scene") != NULL) //add delete scene
   {
     const size_t jsonSize = strlen(message) + 1; // Add 1 for null terminator
     char* json = new char[jsonSize];
     strncpy(json, message, jsonSize);
 
-    StaticJsonDocument<1024> doc;
+    DynamicJsonDocument doc(4096);
     DeserializationError error = deserializeJson(doc, json);
     if (error) {
       ESP_LOGE("main", "deserializeJson() failed: %s", error.c_str());
     }
+    JsonArray ruleConfigValue_set = doc["objects"][0]["data"][0]["params"][0]["ruleConfig"];
+    sceneNum = ruleConfigValue_set.size();
+    saveSceneNum(sceneNum);
+    sceneNum = getSceneNum();
+    ESP_LOGE("main", "Number of scene: %d", sceneNum);
+    String ruleConfig;
+    serializeJson(ruleConfigValue_set, ruleConfig);
+    writeJsonToFile("/data.txt", ruleConfig);
+    advanceStatusCmd(bridgeKey, reqId, ruleConfig, output, macAddress, machc);
+    client.publish(statusTopic, output);
 
-    int enable = doc["objects"][0]["data"][0]["params"][0]["ruleconfig"][0]["enable"];
-    ruleId = doc["objects"][0]["data"][0]["params"][0]["ruleconfig"][0]["ruleid"];
-    JsonArray ruleconfig = doc["objects"][0]["data"][0]["params"][0]["ruleconfig"].as<JsonArray>();
+    writeRuleId(ruleConfigValue_set);
+    // sceneModify(ui_scene1, ui_canh1, 1);
+    // sceneModify(ui_scene2, ui_canh2, 2);
+    // sceneModify(ui_scene3, ui_canh3, 3);
+    updateScene(sceneNum);
+  }
 
-    _ui_flag_modify(ui_scene1, LV_OBJ_FLAG_HIDDEN, _UI_MODIFY_FLAG_REMOVE);
-    _ui_flag_modify(ui_scene1, LV_OBJ_FLAG_CLICKABLE, _UI_MODIFY_FLAG_ADD);
-    if(enable == 0) {
-      _ui_state_modify(ui_scene1, LV_STATE_DISABLED, _UI_MODIFY_STATE_ADD);
+  if(String(topic) == configTopic && strstr(message, "get_scene") != NULL) //response get mess
+  {
+    String ruleConfig;
+    ruleConfig = readJsonFromFile("/data.txt");
+    advanceStatusCmd(bridgeKey, reqId, ruleConfig, output, macAddress, machc);
+    client.publish(statusTopic, output);
+  }
+
+  if(String(topic) == statusTopic && strstr(message, "ack") != NULL)
+  {
+    receivedAckMessage = true;
+  }
+
+  if(String(topic) == deviceTopic && strstr(message, "change_scene") != NULL)
+  {
+    const size_t jsonSize = strlen(message) + 1; // Add 1 for null terminator
+    char* json = new char[jsonSize];
+    strncpy(json, message, jsonSize);
+
+    DynamicJsonDocument doc(1024);
+    DeserializationError error = deserializeJson(doc, json);
+    if (error) {
+      ESP_LOGE("main", "deserializeJson() failed: %s", error.c_str());
     }
-    else {
-      _ui_state_modify(ui_scene1, LV_STATE_DISABLED, _UI_MODIFY_STATE_REMOVE);
+    const char *ruleIdValue = doc["objects"][0]["data"][0]["params"][0]["ruleConfig"][0]["ruleid"];
+    ESP_LOGE("main", "ruleid change: %s", ruleIdValue);
+    const char *nameValue = doc["objects"][0]["data"][0]["params"][0]["ruleConfig"][0]["name"];
+    int enableValue = doc["objects"][0]["data"][0]["params"][0]["ruleConfig"][0]["enable"];
+    const char *iconKeyValue = doc["objects"][0]["data"][0]["params"][0]["ruleConfig"][0]["iconkey"];
+
+    String ruleConfigTemp = readJsonFromFile("/data.txt");
+    ESP_LOGE("main", "read old ruleconfig");
+
+    DynamicJsonDocument doc1(1024);
+    DeserializationError error1 = deserializeJson(doc1, ruleConfigTemp);
+    if (error) {
+      ESP_LOGE("main", "deserializeJson() failed: %s", error.c_str());
     }
-    advanceStatusCmd(bridgeKey, reqId, ruleconfig, output, macAddress);
-    client.publish(configTopic, output);
+
+    JsonArray ruleConfigArray = doc1.as<JsonArray>();
+
+    for (JsonVariant ruleConfig : ruleConfigArray) {
+    const char *currentRuleId = ruleConfig["ruleid"];
+
+      if (strcmp(currentRuleId, ruleIdValue) == 0) {
+      // The ruleId matches the ruleIdValue
+      // Update the properties
+      JsonObject ruleConfigObject = ruleConfig.as<JsonObject>();
+      ruleConfigObject["name"] = nameValue;
+      ruleConfigObject["enable"] = enableValue;
+      ruleConfigObject["iconkey"] = iconKeyValue;
+      }
+    }
+    String updateRuleConfig;
+    serializeJson(ruleConfigArray, updateRuleConfig);
+    sceneNum = ruleConfigArray.size();
+    saveSceneNum(sceneNum);
+    sceneNum = getSceneNum();
+    ESP_LOGE("main", "Number of scene: %d", sceneNum);
+    ESP_LOGE("main", "ruleconfig change: %s", updateRuleConfig.c_str());
+    writeJsonToFile("/data.txt", updateRuleConfig);
+    writeRuleId(ruleConfigArray);
+    updateScene(sceneNum);
+    advanceStatusCmd(bridgeKey, reqId, updateRuleConfig, output, macAddress, machc);
+    client.publish(statusTopic, output);
+  }
+
+  if(String(topic) == deviceTopic && strstr(message, "del_scene") != NULL)
+  {
+    const size_t jsonSize = strlen(message) + 1; // Add 1 for null terminator
+    char* json = new char[jsonSize];
+    strncpy(json, message, jsonSize);
+
+    DynamicJsonDocument doc(1024);
+    DeserializationError error = deserializeJson(doc, json);
+    if (error) {
+      ESP_LOGE("main", "deserializeJson() failed: %s", error.c_str());
+    }
+    const char *ruleIdValue = doc["objects"][0]["data"][0]["params"][0]["ruleid"];
+    ESP_LOGE("main", "ruleid change: %s", ruleIdValue);
+    String ruleConfigTemp = readJsonFromFile("/data.txt");
+    DynamicJsonDocument doc1(1024);
+    DeserializationError error1 = deserializeJson(doc1, ruleConfigTemp);
+    if (error) {
+      ESP_LOGE("main", "deserializeJson() failed: %s", error.c_str());
+    }
+    JsonArray ruleConfigArray = doc1.as<JsonArray>();
+
+    for (size_t i = 0; i < ruleConfigArray.size(); i++) {
+    // Get the current object
+    JsonObject object = ruleConfigArray[i].as<JsonObject>();
+
+    // Check if the object has a "ruleId" property
+    if (object.containsKey("ruleid")) {
+      // Compare the "ruleId" property with the provided ruleId
+      if (strcmp(object["ruleid"].as<const char*>(), ruleIdValue) == 0) {
+        // Remove the object at the current index
+        ruleConfigArray.remove(i);
+        break; // Exit the loop after removing the object
+        }
+      }
+    }
+    
+    String updateRuleConfig;
+    serializeJson(ruleConfigArray, updateRuleConfig);
+    sceneNum = ruleConfigArray.size();
+    saveSceneNum(sceneNum);
+    sceneNum = getSceneNum();
+    ESP_LOGE("main", "Number of scene: %d", sceneNum);
+    ESP_LOGE("main", "ruleconfig change: %s", updateRuleConfig.c_str());
+    writeJsonToFile("/data.txt", updateRuleConfig);
+    writeRuleId(ruleConfigArray);
+    updateScene(sceneNum);
+    advanceStatusCmd(bridgeKey, reqId, updateRuleConfig, output, macAddress, machc);
+    client.publish(statusTopic, output);
   }
 }
 
@@ -312,6 +437,7 @@ void uiTask(void *pvParameters)
 
 void setup() {
   Serial.begin(115200);
+  spiffsInit();
 
   gfx->begin(-1);
   gfx->fillScreen(BLACK);
@@ -362,17 +488,18 @@ void setup() {
 
   init_lv_group();
   ui_init();
-  outlineBorder(ui_button1);
-  outlineBorder(ui_button2);
-  outlineBorder(ui_button3);
-  outlineBorder(ui_button4);
-  outlineBorder(ui_resetWifi);
-  outlineBorder(ui_sceneSetting);
-  outlineBorder(ui_back);
+  uiGroup1();
+  sceneNum = getSceneNum();
+  ESP_LOGE("main", "Scene's number : %d", sceneNum);
+  updateScene(sceneNum);
   setupAP();
   setupApi();
   WiFi.macAddress(mac);
   sprintf(macAddress, "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+  sprintf(statusTopic, "component/deviceIP/%s/status", macAddress);
+  sprintf(controlTopic, "component/deviceIP/%s/control", macAddress);
+  sprintf(configTopic, "component/deviceIP/%s/config", macAddress);
+  sprintf(deviceTopic, "component/deviceIP/config");
 
   if(!MDNS.begin("esp32")) {
     ESP_LOGE("main", "error starring mDNS!");
@@ -417,7 +544,6 @@ void loop() {
 void init_lv_group() {
   lv_group = lv_group_create();
   lv_group_set_default(lv_group);
-
   lv_indev_t *cur_drv = NULL;
   for (;;) {
     cur_drv = lv_indev_get_next(cur_drv);
@@ -485,6 +611,130 @@ void checkIpHCmDNS()
   }
 }
 
+void spiffsInit()
+{
+  if (!LittleFS.begin()) {
+    ESP_LOGE("main","Failed to initialize LittleFS");
+    return;
+  }
+
+  File root = LittleFS.open("/");
+  if (!root.isDirectory()) {
+    ESP_LOGE("main", "Failed to open directory");
+    return;
+  }
+
+  // Iterate through each file in the root directory
+  File file = root.openNextFile();
+  while (file) {
+    // Print the name of each file
+    ESP_LOGE("main", "%s", String(file.name()).c_str());
+
+    // Close the current file
+    file.close();
+
+    // Open the next file
+    file = root.openNextFile();
+  }
+
+  ESP_LOGE("main", "data read: %s", String(readJsonFromFile("/data.txt")).c_str());
+
+
+  size_t totalBytes = LittleFS.totalBytes();
+  size_t usedBytes = LittleFS.usedBytes();
+
+  ESP_LOGE("main", "total bytes: %d", totalBytes);
+  ESP_LOGE("main", "used bytes: %d", usedBytes);
+}
+
+void saveSceneNum(uint8_t value)
+{
+  EEPROM.begin(200);
+  EEPROM.put(190, value);
+  EEPROM.commit();
+  EEPROM.end();
+}
+
+uint8_t getSceneNum() {
+  uint8_t value;
+  EEPROM.begin(200);
+  EEPROM.get(190, value);
+  EEPROM.end();
+  return value;
+}
+void sceneModify(lv_obj_t* ui, lv_obj_t* ui_label, int num)
+{
+  lv_img_dsc_t ui_image[] = {ui_img_minus1_png, ui_img_0_png, ui_img_1_png, ui_img_2_png, ui_img_3_png, ui_img_4_png, ui_img_5_png,
+  ui_img_6_png, ui_img_7_png, ui_img_8_png, ui_img_9_png, ui_img_10_png, ui_img_11_png, ui_img_12_png, ui_img_13_png, ui_img_14_png,
+  ui_img_15_png, ui_img_16_png, ui_img_17_png, ui_img_18_png, ui_img_19_png, ui_img_20_png, ui_img_21_png, ui_img_22_png, ui_img_23_png,
+  ui_img_24_png, ui_img_25_png, ui_img_26_png, ui_img_27_png, ui_img_28_png, ui_img_29_png, ui_img_30_png, ui_img_31_png, ui_img_32_png,
+  ui_img_33_png, ui_img_34_png, ui_img_35_png, ui_img_36_png, ui_img_37_png, ui_img_38_png};
+
+  enableStatus = readEnableValue("/ruleId.txt", num);
+  icon = readIconKeyValue("/ruleId.txt", num);
+  name = readNameValue("/ruleId.txt", num);
+  ESP_LOGE("main", "icon is : %s", icon);
+  _ui_state_modify(ui, LV_STATE_DISABLED, enableStatus);
+  lv_obj_set_style_bg_img_src( ui, &ui_img_19_png, LV_PART_MAIN | LV_STATE_DEFAULT );
+  lv_label_set_text(ui_label, name);
+
+  free((void*)name);
+  free((void*)icon);
+}
+
+void updateScene(uint8_t num) {
+  lv_obj_t* ui_scenes[] = {ui_scene1, ui_scene2, ui_scene3, ui_scene4, ui_scene5};
+  lv_obj_t* ui_canhs[] = {ui_canh1, ui_canh2, ui_canh3, ui_canh4, ui_canh5};
+
+  for (uint8_t i = 0; i < num; i++) {
+    ESP_LOGE("main", "i = %d", i);
+    ESP_LOGE("main", "num = %d", num);
+    sceneModify(ui_scenes[i], ui_canhs[i],i + 1);
+  }
+  for(uint8_t i = num; i < 5; i++) //i < max_scene
+  {
+    _ui_flag_modify(ui_scenes[i], LV_OBJ_FLAG_HIDDEN, 0);
+  }
+  if(num == 0)
+  {
+    _ui_flag_modify(ui_scenes[0], LV_OBJ_FLAG_HIDDEN, 1);
+    lv_label_set_text(ui_canhs[0], "Khong co canh");
+  }
+}
+
+void writeRuleId(JsonArray json)
+{
+  File file = LittleFS.open("/ruleId.txt", "w");
+      if (!file) {
+        Serial.println("Failed to open file");
+        return;
+    }
+    for(JsonVariant value : json) {
+      JsonObject jsonObject = value.as<JsonObject>();
+
+      int enable = jsonObject["enable"];
+      const char* name = jsonObject["name"];
+      int  iconkey = jsonObject["iconkey"];
+      const char* ruleid = jsonObject["ruleid"];
+      file.print("enable: ");
+      file.println(enable);
+      file.print("name: ");
+      file.println(name);
+      file.print("iconkey: ");
+      file.println(iconkey);
+      file.print("ruleid: ");
+      file.println(ruleid);
+      file.println();
+    }
+    file.close();
+    String text = readJsonFromFile("/ruleId.txt");
+    ESP_LOGE("main", "%s", text.c_str());
+}
+//UI_EVENT_HANDLE
+//==============================================================================
+
+//==============================================================================
+
 void ui_event_button(lv_event_t *e, ButtonStatus& btn_status, const char *ep) {
   lv_event_code_t event_code = lv_event_get_code(e);
   lv_obj_t *target = lv_event_get_target(e);
@@ -492,14 +742,12 @@ void ui_event_button(lv_event_t *e, ButtonStatus& btn_status, const char *ep) {
   if (event_code == LV_EVENT_VALUE_CHANGED) {
     if (lv_obj_has_state(target, LV_STATE_CHECKED)) {
       if (btn_status == OFF) {
-        //client.publish(sw_topic, message1);
         generateJsonCmdStatus(bridgeKey, reqId, output, macAddress, ep, true);
         client.publish(statusTopic, output);
         btn_status = ON;
       }
     } else {
       if (btn_status == ON) {
-        //client.publish(sw_topic, message2);
         generateJsonCmdStatus(bridgeKey, reqId, output, macAddress, ep, false);
         client.publish(statusTopic, output);
         btn_status = OFF;
@@ -508,12 +756,33 @@ void ui_event_button(lv_event_t *e, ButtonStatus& btn_status, const char *ep) {
   }
 }
 
-void ui_event_scene(lv_event_t *e)
+void ui_event_sceneSetting(lv_event_t * e)
+{
+    lv_event_code_t event_code = lv_event_get_code(e);
+    lv_obj_t * target = lv_event_get_target(e);
+    if(event_code == LV_EVENT_CLICKED) {
+        _ui_screen_change(&ui_SettingScreen, LV_SCR_LOAD_ANIM_FADE_ON, 100, 0, &ui_SettingScreen_screen_init);
+        uiGroup2();
+    }
+}
+
+void ui_event_back(lv_event_t * e)
+{
+    lv_event_code_t event_code = lv_event_get_code(e);
+    lv_obj_t * target = lv_event_get_target(e);
+    if(event_code == LV_EVENT_CLICKED) {
+        _ui_screen_change(&ui_mainScreen, LV_SCR_LOAD_ANIM_FADE_ON, 150, 0, &ui_mainScreen_screen_init);
+        uiGroup1();
+    }
+}
+
+void ui_event_scene(lv_event_t *e, int num)
 {
   lv_event_code_t event_code = lv_event_get_code(e);
   lv_obj_t *target = lv_event_get_target(e);
-  if(event_code == LV_EVENT_CLICKED)
+  if(event_code == LV_EVENT_CLICKED && num <= sceneNum)
   {
+      const char* ruleId = readRuleIDValue("/ruleId.txt", num);
       activeRuleCmd(reqId, output, ruleId);
       client.publish(controlTopic, output);
   }
@@ -521,7 +790,31 @@ void ui_event_scene(lv_event_t *e)
 
 void ui_event_scene1(lv_event_t *e)
 {
-  ui_event_scene(e);
+  ui_event_scene(e, 1);
+}
+
+void ui_event_scene2(lv_event_t *e)
+{
+  //code here
+  ui_event_scene(e, 2);
+}
+
+void ui_event_scene3(lv_event_t *e)
+{
+  //code here
+  ui_event_scene(e, 3);
+}
+
+void ui_event_scene4(lv_event_t *e)
+{
+  //code here
+  ui_event_scene(e, 4);
+}
+
+void ui_event_scene5(lv_event_t *e)
+{
+  //code here
+  ui_event_scene(e, 5);
 }
 
 void ui_event_button1(lv_event_t *e) {
@@ -540,47 +833,24 @@ void ui_event_button4(lv_event_t *e) {
   ui_event_button(e, btnStatus4, ep4);
 }
 
-void spiffsInit()
+void uiGroup1()
 {
-  if (!SPIFFS.begin(true)) {
-    ESP_LOGE("main", "An Error has occurred while mounting SPIFFS");
-    return;
-  }
-
-  if (SPIFFS.exists("/data.txt")) {
-    ESP_LOGE("main", "File already exists");
-  }
-
-  File fileToAppend = SPIFFS.open("/data.txt", FILE_APPEND);
-
-  if (!fileToAppend) {
-    ESP_LOGE("main","There was an error opening the file for appending");
-    return;
-  }
-
-  if (fileToAppend.println("json")) {
-    ESP_LOGE("main","File content was appended");
-  } else {
-    ESP_LOGE("main","File append failed");
-  }
-
-  fileToAppend.close();
-
-  File fileToRead = SPIFFS.open("/data.txt", FILE_READ);
-
-  if (!fileToRead) {
-    ESP_LOGE("main", "There was an error opening the file for Reading");
-    return;
-  }
-
-  String readFile = String(fileToRead.read());
-
-  ESP_LOGE("main", "read file: %s", fileToRead.readString().c_str());
- 
-  fileToRead.close();
+  lv_group_remove_all_objs(lv_group);
+  lv_group_add_obj(lv_group, ui_button1);
+  lv_group_add_obj(lv_group, ui_button2);
+  lv_group_add_obj(lv_group, ui_button3);
+  lv_group_add_obj(lv_group, ui_button4);
+  lv_group_add_obj(lv_group, ui_resetWifi);
+  lv_group_add_obj(lv_group, ui_sceneSetting);
 }
 
-void addDeleteScene(char *message)
+void uiGroup2()
 {
-  
+  lv_group_remove_all_objs(lv_group);
+  lv_group_add_obj(lv_group, ui_scene1);
+  lv_group_add_obj(lv_group, ui_scene2);
+  lv_group_add_obj(lv_group, ui_scene3);
+  lv_group_add_obj(lv_group, ui_scene4);
+  lv_group_add_obj(lv_group, ui_scene5);
+  lv_group_add_obj(lv_group, ui_back);
 }

@@ -179,7 +179,7 @@ void accessPoint_init()
   sprintf(mac1Address, "%02X:%02X",mac1[4], mac1[5]);
   char apSSID[33];
   sprintf(apSSID, "SwitchIP_%s", mac1Address);
-  WiFi.softAP(apSSID, "LumiVn@2023");
+  WiFi.softAP(apSSID, "ABC123456");
   if(debug)
   {
     ESP_LOGE("main", "AccessPoint IP: %s", WiFi.softAPIP().toString());

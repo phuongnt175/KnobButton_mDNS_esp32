@@ -1,6 +1,6 @@
 #include <Mid/jsonMessage/Mid_jsonMessage.h>
 
-void generateJsonCommandPost(const String& bridgeKey, const String& reqId, JsonArray ruleConfig, char jsonString[4096], char *macDevice) 
+void generateJsonCommandPost(const String& bridgeKey, const String& reqId, String ruleConfig, char jsonString[], char *macDevice) 
 {
   StaticJsonDocument<4096> doc;
   
@@ -25,13 +25,16 @@ void generateJsonCommandPost(const String& bridgeKey, const String& reqId, JsonA
     attr["deviceInfo"]["Manufacturer"] = "Lumi R&D";
     attr["deviceInfo"]["ModelId"] = "LM-SZDM4";
 
-    JsonObject sceneConfig = attr.createNestedObject("sceneConfig");
-    sceneConfig["ruleConfig"] = ruleConfig;
+    if(i == 1)
+    {
+      JsonObject sceneConfig = attr.createNestedObject("sceneConfig");
+      sceneConfig["ruleConfig"] = serialized(ruleConfig);
+      // Create sceneSetting array and add objects
+      JsonArray sceneSetting = attr.createNestedArray("sceneSetting");
+      JsonObject sceneSettingItem = sceneSetting.createNestedObject();
+      sceneSettingItem["name"] = "ruleConfig";
+    }
 
-    // Create sceneSetting array and add objects
-    JsonArray sceneSetting = attr.createNestedArray("sceneSetting");
-    JsonObject sceneSettingItem = sceneSetting.createNestedObject();
-    sceneSettingItem["name"] = "ruleConfig";
     JsonArray traits = dataItem.createNestedArray("traits");
     JsonObject trait = traits.createNestedObject();
     trait["is_main"] = true;
@@ -54,7 +57,7 @@ void generateJsonCommandPost(const String& bridgeKey, const String& reqId, JsonA
 
 //==============================================================================================================================================
 
-void generateJsonCmdStatus(const String& bridgeKey, const String& reqId, char jsonString[1024], char *macDevice, const char *ep, boolean flag)
+void generateJsonCmdStatus(const String& bridgeKey, const String& reqId, char jsonString[], char *macDevice, const char *ep, boolean flag)
 {
   StaticJsonDocument<1024> doc;
 
@@ -161,7 +164,7 @@ void responseGetStatus(const String& bridgeKey, const String& reqId, char jsonSt
   serializeJson(doc, jsonString, 4096);
 }
 
-void advanceStatusCmd(const String& bridgeKey, const String& reqId, JsonArray ruleConfig, char jsonString[4096], char *macDevice) 
+void advanceStatusCmd(const String& bridgeKey, const String& reqId, String ruleConfig, char jsonString[], char *macDevice, char *macHC) 
 {
   StaticJsonDocument<4096> doc;
 
@@ -177,13 +180,14 @@ void advanceStatusCmd(const String& bridgeKey, const String& reqId, JsonArray ru
   JsonObject dataObject = data.createNestedObject();
   dataObject["brigde_key"] = bridgeKey;
   dataObject["command"] = "status_scene";
+  dataObject["hash"] = bridgeKey + String("-") + macDevice + String("-1");
+  dataObject["machc"] = macHC;
 
   JsonArray params = dataObject.createNestedArray("params");
+  JsonObject ruleObject = params.createNestedObject();
+  ruleObject["ruleConfig"] = serialized(ruleConfig);
 
-  JsonObject ruleConfigObject = params.createNestedObject();
-  ruleConfigObject["ruleConfig"] = ruleConfig;
-
-  dataObject["hash"] = bridgeKey + String("-") + macDevice + String("-1");
+  
 
   doc["reqid"] = reqId;
   doc["source"] = bridgeKey;
@@ -199,7 +203,7 @@ void activeRuleCmd(const String& reqId ,char jsonString[], const char ruleId[]) 
 
   doc["cmd"] = "set";
   doc["reqid"] = reqId;
-  doc["source"] = "android-SM A736B-tainv@lumi.biz-1693296207320-24";
+  doc["source"] = "deviceIP";
 
   JsonArray objects = doc.createNestedArray("objects");
   JsonObject object = objects.createNestedObject();
@@ -210,4 +214,139 @@ void activeRuleCmd(const String& reqId ,char jsonString[], const char ruleId[]) 
   data.add(ruleId);
 
   serializeJson(doc, jsonString, 1024);
+}
+
+void writeJsonToFile(const char *path, String output) {
+  
+  File file = LittleFS.open(path, FILE_WRITE);
+  if (!file) {
+    ESP_LOGE("main", "Failed to open file for writing");
+    return;
+  }
+
+  // Write the JSON string to the file
+  if (file.print(output)) {
+    ESP_LOGE("main", "File was written");
+  } else {
+    ESP_LOGE("main", "File write failed");
+  }
+  file.close();
+}
+
+void appendJsonToFile(const char *path, String output)
+{
+  File file = LittleFS.open(path, FILE_APPEND);
+  if(file) {
+    ESP_LOGE("main", "Failed to open file for appending");
+    return;
+  }
+
+  if(file.println(output)) {
+    ESP_LOGE("main", "File was appended");
+  } else {
+    ESP_LOGE("main", "File append failed");
+  }
+  file.close();
+}
+
+String readJsonFromFile(const char *path) {
+  // Open the file for reading
+  File file = LittleFS.open(path, FILE_READ);
+  if (!file) {
+    ESP_LOGE("main", "Failed to open file for reading");
+    return "";
+  }
+
+  // Read the file content into a String
+  String fileContent = file.readString();
+  file.close();
+
+  return fileContent;
+}
+
+const char *readRuleIDValue(const char *path, int num)
+{
+  File file = LittleFS.open(path, "r");
+  if (!file) {
+    ESP_LOGE("main", "Failed to open file");
+  }
+
+  String ruleid;
+  int count = 0;
+  while (count < num && file.available()) {
+    String line = file.readStringUntil('\n');
+    if (line.startsWith("ruleid: ")) {
+      ruleid = line.substring(8);
+      ruleid.trim();
+      count++;
+    }
+  }
+  file.close();
+  return ruleid.c_str();
+}
+
+const char *readIconKeyValue(const char *path, int num)
+{
+  File file = LittleFS.open(path, "r");
+  if (!file) {
+    ESP_LOGE("main", "Failed to open file");
+  }
+
+  String tmp;
+  int count = 0;
+  while (count < num && file.available()) {
+    String line = file.readStringUntil('\n');
+    if (line.startsWith("iconkey: ")) {
+      tmp = line.substring(9);
+      tmp.trim();
+      count++;
+    }
+  }
+  const char *value = strdup(tmp.c_str());
+  file.close();
+  return value;
+}
+
+const char *readNameValue(const char *path, int num)
+{
+  File file = LittleFS.open(path, "r");
+  if (!file) {
+    ESP_LOGE("main", "Failed to open file");
+  }
+
+  String name;
+  int count = 0;
+  while (count < num && file.available()) {
+    String line = file.readStringUntil('\n');
+    if (line.startsWith("name: ")) {
+      name = line.substring(6);
+      name.trim();
+      count++;
+    }
+  }
+  const char *value = strdup(name.c_str());
+  file.close();
+  return value;
+}
+
+int readEnableValue(const char *path, int num)
+{
+  int enable;
+  File file = LittleFS.open(path, "r");
+  if (!file) {
+    ESP_LOGE("main", "Failed to open file");
+  }
+
+  String tmp;
+  int count = 0;
+  while (count < num && file.available()) {
+    String line = file.readStringUntil('\n');
+    if (line.startsWith("enable: ")) {
+      tmp = line.substring(8);
+      count++;
+    }
+  }
+  enable = tmp.toInt();
+  file.close();
+  return enable;
 }

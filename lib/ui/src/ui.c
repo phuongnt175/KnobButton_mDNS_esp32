@@ -33,6 +33,10 @@ lv_obj_t * ui_sceneSetting;
 // SCREEN: ui_SettingScreen
 void ui_SettingScreen_screen_init(void);
 void ui_event_scene1(lv_event_t * e);
+void ui_event_scene2(lv_event_t * e);
+void ui_event_scene3(lv_event_t * e);
+void ui_event_scene4(lv_event_t * e);
+void ui_event_scene5(lv_event_t * e);
 lv_obj_t * ui_SettingScreen;
 lv_obj_t * ui_scene1;
 lv_obj_t * ui_canh1;
@@ -42,8 +46,13 @@ lv_obj_t * ui_scene3;
 lv_obj_t * ui_canh3;
 lv_obj_t * ui_scene4;
 lv_obj_t * ui_canh4;
+lv_obj_t * ui_scene5;
+lv_obj_t * ui_canh5;
+lv_obj_t * ui_panelScroll;
 void ui_event_back(lv_event_t * e);
 lv_obj_t * ui_back;
+
+void outlineBorder(lv_obj_t *ui);
 
 lv_obj_t * ui____initial_actions0;
 
@@ -58,6 +67,19 @@ lv_obj_t * ui____initial_actions0;
 ///////////////////// ANIMATIONS ////////////////////
 
 ///////////////////// FUNCTIONS ////////////////////
+
+void outlineBorder(lv_obj_t *ui)
+{
+  static lv_style_t style;
+  lv_style_init(&style);
+
+  lv_style_set_outline_width(&style, 5);
+  lv_style_set_outline_color(&style, lv_palette_main(LV_PALETTE_BLUE));
+  lv_style_set_outline_pad(&style, 8);
+
+  lv_obj_add_style(ui, &style, LV_STATE_FOCUS_KEY);
+}
+
 void ui_event_lumiScreen(lv_event_t * e)
 {
     lv_event_code_t event_code = lv_event_get_code(e);
@@ -67,35 +89,29 @@ void ui_event_lumiScreen(lv_event_t * e)
     }
 }
 
-void ui_event_sceneSetting(lv_event_t * e)
-{
-    lv_event_code_t event_code = lv_event_get_code(e);
-    lv_obj_t * target = lv_event_get_target(e);
-    if(event_code == LV_EVENT_CLICKED) {
-        _ui_screen_change(&ui_SettingScreen, LV_SCR_LOAD_ANIM_FADE_ON, 100, 0, &ui_SettingScreen_screen_init);
-    }
-}
-
-void ui_event_back(lv_event_t * e)
-{
-    lv_event_code_t event_code = lv_event_get_code(e);
-    lv_obj_t * target = lv_event_get_target(e);
-    if(event_code == LV_EVENT_CLICKED) {
-        _ui_screen_change(&ui_mainScreen, LV_SCR_LOAD_ANIM_FADE_ON, 150, 0, &ui_mainScreen_screen_init);
-    }
-}
-
 ///////////////////// SCREENS ////////////////////
 
 void ui_init(void)
 {
     lv_disp_t * dispp = lv_disp_get_default();
     lv_theme_t * theme = lv_theme_default_init(dispp, lv_palette_main(LV_PALETTE_BLUE), lv_palette_main(LV_PALETTE_RED),
-                                               true, LV_FONT_DEFAULT);
+                                                true, LV_FONT_DEFAULT);
     lv_disp_set_theme(dispp, theme);
     ui_lumiScreen_screen_init();
     ui_mainScreen_screen_init();
     ui_SettingScreen_screen_init();
     ui____initial_actions0 = lv_obj_create(NULL);
     lv_disp_load_scr(ui_lumiScreen);
+    outlineBorder(ui_button1);
+    outlineBorder(ui_button2);
+    outlineBorder(ui_button3);
+    outlineBorder(ui_button4);
+    outlineBorder(ui_resetWifi);
+    outlineBorder(ui_sceneSetting);
+    outlineBorder(ui_back);
+    outlineBorder(ui_scene1);
+    outlineBorder(ui_scene2);
+    outlineBorder(ui_scene3);
+    outlineBorder(ui_scene4);
+    outlineBorder(ui_scene5);
 }

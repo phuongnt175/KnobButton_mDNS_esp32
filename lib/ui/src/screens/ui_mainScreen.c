@@ -27,7 +27,8 @@ void ui_mainScreen_screen_init(void)
     lv_obj_set_style_bg_color(ui_button1, lv_color_hex(0x3399FF), LV_STATE_CHECKED);
     lv_obj_set_style_bg_opa(ui_button1, 50, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_opa(ui_button1, 150, LV_STATE_CHECKED);
-    lv_obj_set_style_bg_img_src(ui_button1, &ui_img_472831459, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_img_src(ui_button1, &ui_img_932150510, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_img_src(ui_button1, &ui_img_1704086984, LV_STATE_CHECKED);
 
     ui_button2 = lv_btn_create(ui_mainScreen);
     lv_obj_set_width(ui_button2, 150);

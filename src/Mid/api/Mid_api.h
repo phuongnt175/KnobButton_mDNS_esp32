@@ -8,7 +8,6 @@
 
 #define eepromTextVariableSize 33
 
-
 //=======================================================================================
 void saveWiFiToEEPPROM(char* ssid_, char* pass_);
 void readWiFiFromEEPROM(char* ssid_, char* pass_);

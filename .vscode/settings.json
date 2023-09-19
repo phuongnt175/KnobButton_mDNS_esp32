@@ -58,7 +58,8 @@
         "thread": "cpp",
         "cinttypes": "cpp",
         "typeinfo": "cpp",
-        "variant": "cpp"
+        "variant": "cpp",
+        "lvgl.h": "c"
     },
     "cmake.sourceDirectory": "C:/Users/admin1/Documents/PlatformIO/Projects/knobTest/lib/ui/src"
 }

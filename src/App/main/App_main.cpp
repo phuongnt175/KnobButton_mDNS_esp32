@@ -23,6 +23,8 @@
 #define ECO_STEP(x) x ? ECO_O(x) : 0
 #define GFX_BL 38
 
+#define MAX_SCENE 10
+
 #define LED_PIN 4
 #define LED_NUM 13
 CRGB leds[LED_NUM];
@@ -137,7 +139,7 @@ void saveSceneNum(uint8_t value);
 uint8_t getSceneNum();
 void uiGroup1();
 void uiGroup2();
-void sceneModify(lv_obj_t* ui, lv_obj_t* ui_label, const lv_img_dsc_t* ui_image, int num);
+void sceneModify(lv_obj_t* ui, lv_obj_t* ui_label, int num);
 void writeRuleId(JsonArray json);
 void updateScene(uint8_t num);
 
@@ -264,7 +266,7 @@ void Callback(char* topic, byte* payload, unsigned int length) {
   {
     if(strstr(message, macAddress) != NULL)
     {
-      ESP_LOGE("main", "disconnected");
+      ESP_LOGE("main", "%s", message);
       eraseEEPROM();
       WiFi.disconnect();
       client.disconnect(); //disconnect from mqtt
@@ -281,6 +283,7 @@ void Callback(char* topic, byte* payload, unsigned int length) {
 
   if(String(topic) == configTopic && strstr(message, "set_scene") != NULL) //add delete scene
   {
+    ESP_LOGE("main", "%s", message);
     const size_t jsonSize = strlen(message) + 1; // Add 1 for null terminator
     char* json = new char[jsonSize];
     strncpy(json, message, jsonSize);
@@ -302,9 +305,6 @@ void Callback(char* topic, byte* payload, unsigned int length) {
     client.publish(statusTopic, output);
 
     writeRuleId(ruleConfigValue_set);
-    // sceneModify(ui_scene1, ui_canh1, 1);
-    // sceneModify(ui_scene2, ui_canh2, 2);
-    // sceneModify(ui_scene3, ui_canh3, 3);
     updateScene(sceneNum);
   }
 
@@ -323,6 +323,7 @@ void Callback(char* topic, byte* payload, unsigned int length) {
 
   if(String(topic) == deviceTopic && strstr(message, "change_scene") != NULL)
   {
+    ESP_LOGE("main", "%s", message);
     const size_t jsonSize = strlen(message) + 1; // Add 1 for null terminator
     char* json = new char[jsonSize];
     strncpy(json, message, jsonSize);
@@ -512,6 +513,7 @@ void setup() {
   client.setBufferSize(4096);
   client.setServer(iphc, PORT);
   client.setCallback(Callback);
+
 }
 
 void loop() {
@@ -534,6 +536,10 @@ void loop() {
   if(now - lastTime > 600000) // Send status periodically after 10 minutes
   {
     responseGetStatus(bridgeKey, reqId, output, macAddress);
+    client.publish(statusTopic, output);
+    String ruleConfig;
+    ruleConfig = readJsonFromFile("/data.txt");
+    advanceStatusCmd(bridgeKey, reqId, ruleConfig, output, macAddress, machc);
     client.publish(statusTopic, output);
     lastTime = now;
   }
@@ -672,7 +678,6 @@ void sceneModify(lv_obj_t* ui, lv_obj_t* ui_label, int num)
   enableStatus = readEnableValue("/ruleId.txt", num);
   icon = readIconKeyValue("/ruleId.txt", num);
   name = readNameValue("/ruleId.txt", num);
-  ESP_LOGE("main", "icon is : %s", icon);
   int iconValue = std::stoi(icon) + 1;
   _ui_state_modify(ui, LV_STATE_DISABLED, enableStatus);
   lv_obj_set_style_bg_img_src( ui, image_array[iconValue], LV_PART_MAIN | LV_STATE_DEFAULT );
@@ -683,22 +688,30 @@ void sceneModify(lv_obj_t* ui, lv_obj_t* ui_label, int num)
 }
 
 void updateScene(uint8_t num) {
-  lv_obj_t* ui_scenes[] = {ui_scene1, ui_scene2, ui_scene3, ui_scene4, ui_scene5};
-  lv_obj_t* ui_canhs[] = {ui_canh1, ui_canh2, ui_canh3, ui_canh4, ui_canh5};
+  lv_obj_t* ui_scenes[] = {ui_scene1, ui_scene2, ui_scene3, ui_scene4, ui_scene5, ui_scene6, ui_scene7, ui_scene8, ui_scene9, ui_scene10}; // can fix more scenes
+  lv_obj_t* ui_canhs[] = {ui_canh1, ui_canh2, ui_canh3, ui_canh4, ui_canh5, ui_canh6, ui_canh7, ui_canh8, ui_canh9, ui_canh10};
 
+  for(uint8_t i = num; i < MAX_SCENE; i++) //i < max_scene
+  {
+    ESP_LOGE("main", "scene number: %d", i+1);
+    _ui_flag_modify(ui_scenes[i], LV_OBJ_FLAG_HIDDEN, 0);
+  }
+  for(uint8_t i = 0; i < num; i++)
+  {
+    _ui_flag_modify(ui_scenes[i], LV_OBJ_FLAG_HIDDEN, 1);
+  }
   for (uint8_t i = 0; i < num; i++) {
     ESP_LOGE("main", "i = %d", i);
     ESP_LOGE("main", "num = %d", num);
     sceneModify(ui_scenes[i], ui_canhs[i], i + 1);
   }
-  for(uint8_t i = num; i < 5; i++) //i < max_scene
-  {
-    _ui_flag_modify(ui_scenes[i], LV_OBJ_FLAG_HIDDEN, 0);
-  }
+  lv_obj_set_y( ui_back, num*480 );
   if(num == 0)
   {
+    lv_obj_set_style_bg_img_src(ui_scenes[0], NULL, LV_PART_MAIN | LV_STATE_DEFAULT);
     _ui_flag_modify(ui_scenes[0], LV_OBJ_FLAG_HIDDEN, 1);
-    lv_label_set_text(ui_canhs[0], "Khong co canh");
+    lv_label_set_text(ui_canhs[0], "Không có cảnh");
+    lv_obj_set_y( ui_back, 480);
   }
 }
 
@@ -817,6 +830,36 @@ void ui_event_scene5(lv_event_t *e)
   ui_event_scene(e, 5);
 }
 
+void ui_event_scene6(lv_event_t *e)
+{
+  //code here
+  ui_event_scene(e, 6);
+}
+
+void ui_event_scene7(lv_event_t *e)
+{
+  //code here
+  ui_event_scene(e, 7);
+}
+
+void ui_event_scene8(lv_event_t *e)
+{
+  //code here
+  ui_event_scene(e, 8);
+}
+
+void ui_event_scene9(lv_event_t *e)
+{
+  //code here
+  ui_event_scene(e, 9);
+}
+
+void ui_event_scene10(lv_event_t *e)
+{
+  //code here
+  ui_event_scene(e, 10);
+}
+
 void ui_event_button1(lv_event_t *e) {
   ui_event_button(e, btnStatus1, ep1);
 }
@@ -852,5 +895,10 @@ void uiGroup2()
   lv_group_add_obj(lv_group, ui_scene3);
   lv_group_add_obj(lv_group, ui_scene4);
   lv_group_add_obj(lv_group, ui_scene5);
+  lv_group_add_obj(lv_group, ui_scene6);
+  lv_group_add_obj(lv_group, ui_scene7);
+  lv_group_add_obj(lv_group, ui_scene8);
+  lv_group_add_obj(lv_group, ui_scene9);
+  lv_group_add_obj(lv_group, ui_scene10);
   lv_group_add_obj(lv_group, ui_back);
 }

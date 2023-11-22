@@ -120,7 +120,7 @@ void handlePut()
   IPHC = jsonDocument["ip"];
   MACHC = jsonDocument["mac"];
 
-  server.send(200, "application/json", "{ }");
+  server.send(200, "application/json", "{\n status = true \n}");
 
   saveWiFiToEEPPROM((char*)SSID, (char*)PWD);
   readWiFiFromEEPROM(ssid, pass);

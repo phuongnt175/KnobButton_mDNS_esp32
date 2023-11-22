@@ -8,6 +8,11 @@
 
 ///////////////////// VARIABLES ////////////////////
 
+// SCREEN: ui_blackScreen
+void ui_blackScreen_screen_init(void);
+void ui_event_blackScreen( lv_event_t * e);
+lv_obj_t *ui_blackScreen;
+
 // SCREEN: ui_lumiScreen
 void ui_lumiScreen_screen_init(void);
 void ui_event_lumiScreen(lv_event_t * e);
@@ -95,12 +100,20 @@ void outlineBorder(lv_obj_t *ui)
   lv_obj_add_style(ui, &style, LV_STATE_FOCUS_KEY);
 }
 
+void ui_event_blackScreen( lv_event_t * e) {
+    lv_event_code_t event_code = lv_event_get_code(e);
+    lv_obj_t * target = lv_event_get_target(e);
+if ( event_code == LV_EVENT_SCREEN_LOADED) {
+      _ui_screen_change( &ui_lumiScreen, LV_SCR_LOAD_ANIM_FADE_ON, 100, 50, &ui_lumiScreen_screen_init);
+}
+}
+
 void ui_event_lumiScreen(lv_event_t * e)
 {
     lv_event_code_t event_code = lv_event_get_code(e);
     lv_obj_t * target = lv_event_get_target(e);
     if(event_code == LV_EVENT_SCREEN_LOADED) {
-        _ui_screen_change(&ui_mainScreen, LV_SCR_LOAD_ANIM_FADE_ON, 100, 3000, &ui_mainScreen_screen_init);
+        _ui_screen_change(&ui_mainScreen, LV_SCR_LOAD_ANIM_FADE_IN, 100, 3000, &ui_mainScreen_screen_init);
     }
 }
 
@@ -112,11 +125,12 @@ void ui_init(void)
     lv_theme_t * theme = lv_theme_default_init(dispp, lv_palette_main(LV_PALETTE_BLUE), lv_palette_main(LV_PALETTE_RED),
                                                 true, LV_FONT_DEFAULT);
     lv_disp_set_theme(dispp, theme);
+    ui_blackScreen_screen_init();
     ui_lumiScreen_screen_init();
     ui_mainScreen_screen_init();
     ui_SettingScreen_screen_init();
     ui____initial_actions0 = lv_obj_create(NULL);
-    lv_disp_load_scr(ui_lumiScreen);
+    lv_disp_load_scr(ui_blackScreen);
     outlineBorder(ui_button1);
     outlineBorder(ui_button2);
     outlineBorder(ui_button3);

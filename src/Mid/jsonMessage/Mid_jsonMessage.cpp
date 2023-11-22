@@ -1,6 +1,21 @@
 #include <Mid/jsonMessage/Mid_jsonMessage.h>
 
-void generateJsonCommandPost(const String& bridgeKey, const String& reqId, String ruleConfig, char jsonString[], char *macDevice) 
+String getReqId(char* message) {
+  StaticJsonDocument<1024> doc;
+
+  // Deserialize the JSON command from the message variable
+  DeserializationError error = deserializeJson(doc, message);
+
+  // Check for parsing errors
+  if (error) {
+    ESP_LOGE("main", "Parsing failed: %s", error.c_str());
+    return String(); // Return an empty string if parsing failed
+  }
+  const char* reqid = doc["reqid"];
+  return String(reqid);
+}
+
+void generateJsonCommandPost(const String& bridgeKey, String& reqId, char jsonString[], char *macDevice) 
 {
   StaticJsonDocument<4096> doc;
   
@@ -28,7 +43,9 @@ void generateJsonCommandPost(const String& bridgeKey, const String& reqId, Strin
     if(i == 1)
     {
       JsonObject sceneConfig = attr.createNestedObject("sceneConfig");
-      sceneConfig["ruleConfig"] = serialized(ruleConfig);
+      JsonArray ruleConfig = sceneConfig.createNestedArray("ruleConfig");
+      JsonObject maxRule = ruleConfig.createNestedObject();
+      maxRule["MaxRule"] = "10";   //fix this to the max rule can stored in device
       // Create sceneSetting array and add objects
       JsonArray sceneSetting = attr.createNestedArray("sceneSetting");
       JsonObject sceneSettingItem = sceneSetting.createNestedObject();
@@ -47,7 +64,7 @@ void generateJsonCommandPost(const String& bridgeKey, const String& reqId, Strin
     deviceInfo["DataCode"] = " ";
     deviceInfo["HardwareVer"] = " ";
     deviceInfo["Manufacturer"] = " ";
-    deviceInfo["ModelId"] = " ";
+    deviceInfo["ModelId"] = "LM-SZDM4";
     deviceInfo["DeviceIPVersion"] = "3.0";
   }
     doc["reqid"] = reqId;
@@ -57,7 +74,7 @@ void generateJsonCommandPost(const String& bridgeKey, const String& reqId, Strin
 
 //==============================================================================================================================================
 
-void generateJsonCmdStatus(const String& bridgeKey, const String& reqId, char jsonString[], char *macDevice, const char *ep, boolean flag)
+void generateJsonCmdStatus(const String& bridgeKey, String& reqId, char jsonString[], char *macDevice, const char *ep, boolean flag)
 {
   StaticJsonDocument<1024> doc;
 
@@ -91,7 +108,7 @@ void generateJsonCmdStatus(const String& bridgeKey, const String& reqId, char js
 
 //==============================================================================================================================================
 
-void responseGetStatus(const String& bridgeKey, const String& reqId, char jsonString[], char* macDevice)
+void responseGetStatus(const String& bridgeKey, String& reqId, char jsonString[], char* macDevice)
 {
 
   StaticJsonDocument<4096> doc;
@@ -164,7 +181,7 @@ void responseGetStatus(const String& bridgeKey, const String& reqId, char jsonSt
   serializeJson(doc, jsonString, 4096);
 }
 
-void advanceStatusCmd(const String& bridgeKey, const String& reqId, String ruleConfig, char jsonString[], char *macDevice, char *macHC) 
+void advanceStatusCmd(const String& bridgeKey, String& reqId, String ruleConfig, char jsonString[], char *macDevice, char *macHC) 
 {
   StaticJsonDocument<4096> doc;
 
@@ -196,7 +213,7 @@ void advanceStatusCmd(const String& bridgeKey, const String& reqId, String ruleC
   serializeJson(doc, jsonString, 4096);
 }
 
-void activeRuleCmd(const String& reqId ,char jsonString[], const char ruleId[]) {
+void activeRuleCmd(String& reqId ,char jsonString[], const char ruleId[]) {
 
   StaticJsonDocument<1024> doc;
   doc.clear();

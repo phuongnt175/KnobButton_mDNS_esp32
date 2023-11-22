@@ -1,14 +1,12 @@
 #include <Mid/mqtt/Mid_mqtt.h>
 
-extern char machc[33];
-
 WiFiClientSecure  net;
 PubSubClient      client(net);
 
 char TAG[] = "mqtt";
 
 String bridgeKey = "deviceIP";
-String reqId = "abcxyz";
+String reqId;
 
 TaskHandle_t postHandle;
 
@@ -24,6 +22,17 @@ char statusTopic[50];
 char controlTopic[50];
 char configTopic[50];
 char deviceTopic[50];
+
+String randomReqId(int length, String& reqId) {
+  String characters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  
+  reqId = "";
+
+  for (int i = 0; i < length; i++) {
+    reqId += characters[random(0, characters.length())];
+  }
+  return reqId;
+}
 
 void connectBroker()
 {
@@ -64,15 +73,15 @@ void jsonPostCmdTask(void* pvParameters) {
     // Check for acknowledgement message
     if (receivedAckMessage == true) {
 
+      randomReqId( 15, reqId);
       responseGetStatus(bridgeKey, reqId, output, macAddress);
-      client.publish(statusTopic, output);
-
-      advanceStatusCmd(bridgeKey, reqId, ruleConfig, output, macAddress, machc);
       client.publish(statusTopic, output);
 
       stopTask = true; // Set stopTask flag to true to exit the loop
     } else {
-      generateJsonCommandPost(bridgeKey, reqId, ruleConfig, output, macAddress);
+      randomReqId( 15, reqId);
+      ESP_LOGE("mqtt", "reqId: %s", reqId.c_str());
+      generateJsonCommandPost(bridgeKey, reqId, output, macAddress);
       client.publish(configTopic, output);
       attemptCount++;
       if (receivedAckMessage == false) {

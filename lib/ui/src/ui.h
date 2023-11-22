@@ -24,6 +24,10 @@ extern "C" {
 
 #include "ui_helpers.h"
 #include "ui_events.h"
+// SCREEN: ui_blackScreen
+void ui_blackScreen_screen_init(void);
+void ui_event_blackScreen( lv_event_t * e);
+extern lv_obj_t *ui_blackScreen;
 // SCREEN: ui_lumiScreen
 void ui_lumiScreen_screen_init(void);
 void ui_event_lumiScreen(lv_event_t * e);

@@ -53,10 +53,6 @@ extern char controlTopic[50];
 extern char configTopic[50];
 extern char deviceTopic[50];
 
-// extern int enableStatus;
-// extern const char *icon;
-// extern const char *name;
-
 extern WiFiClientSecure  net;
 extern PubSubClient      client;
 
@@ -198,6 +194,7 @@ void SubCallback(lv_obj_t *ui, char* message, ButtonStatus& btn_status, const ch
     btn_status = ON;
     if(lv_obj_get_state(ui) == 6 || lv_obj_get_state(ui) == 0)
     {
+      reqId = getReqId(message);
       generateJsonCmdStatus(bridgeKey, reqId, output, macAddress, ep, true);
       client.publish(statusTopic, output);
       _ui_state_modify(ui, LV_STATE_CHECKED, 2);// _UI_STATE_MODIFY_TOGGLE
@@ -206,6 +203,7 @@ void SubCallback(lv_obj_t *ui, char* message, ButtonStatus& btn_status, const ch
   else if(strstr(message, OFF_MSG) != NULL)
   {
     btn_status = OFF;
+    reqId = getReqId(message);
     generateJsonCmdStatus(bridgeKey, reqId, output, macAddress, ep, false);
     client.publish(statusTopic, output);
     _ui_state_modify(ui, LV_STATE_CHECKED, 1);// _UI_STATE_MODIFY_TOGGLE
@@ -257,6 +255,7 @@ void Callback(char* topic, byte* payload, unsigned int length) {
   {
     if(strstr(message, macAddress) != NULL)
     {
+      reqId = getReqId(message);
       responseGetStatus(bridgeKey, reqId, output, macAddress);
       client.publish(statusTopic, output);
     }
@@ -268,6 +267,7 @@ void Callback(char* topic, byte* payload, unsigned int length) {
     {
       ESP_LOGE("main", "%s", message);
       eraseEEPROM();
+      writeJsonToFile("/ruleId.txt", "");
       WiFi.disconnect();
       client.disconnect(); //disconnect from mqtt
       for(int i =0; i <= 10; i++)
@@ -281,7 +281,7 @@ void Callback(char* topic, byte* payload, unsigned int length) {
     }
   }
 
-  if(String(topic) == configTopic && strstr(message, "set_scene") != NULL) //add delete scene
+  if(String(topic) == configTopic && strstr(message, "set_scene") != NULL) //add scene
   {
     ESP_LOGE("main", "%s", message);
     const size_t jsonSize = strlen(message) + 1; // Add 1 for null terminator
@@ -301,6 +301,7 @@ void Callback(char* topic, byte* payload, unsigned int length) {
     String ruleConfig;
     serializeJson(ruleConfigValue_set, ruleConfig);
     writeJsonToFile("/data.txt", ruleConfig);
+    reqId = getReqId(message);
     advanceStatusCmd(bridgeKey, reqId, ruleConfig, output, macAddress, machc);
     client.publish(statusTopic, output);
 
@@ -312,6 +313,7 @@ void Callback(char* topic, byte* payload, unsigned int length) {
   {
     String ruleConfig;
     ruleConfig = readJsonFromFile("/data.txt");
+    reqId = getReqId(message);
     advanceStatusCmd(bridgeKey, reqId, ruleConfig, output, macAddress, machc);
     client.publish(statusTopic, output);
   }
@@ -372,12 +374,14 @@ void Callback(char* topic, byte* payload, unsigned int length) {
     writeJsonToFile("/data.txt", updateRuleConfig);
     writeRuleId(ruleConfigArray);
     updateScene(sceneNum);
+    reqId = getReqId(message);
     advanceStatusCmd(bridgeKey, reqId, updateRuleConfig, output, macAddress, machc);
     client.publish(statusTopic, output);
   }
 
   if(String(topic) == deviceTopic && strstr(message, "del_scene") != NULL)
   {
+    ESP_LOGE("main", "%s", message);
     const size_t jsonSize = strlen(message) + 1; // Add 1 for null terminator
     char* json = new char[jsonSize];
     strncpy(json, message, jsonSize);
@@ -422,6 +426,7 @@ void Callback(char* topic, byte* payload, unsigned int length) {
     writeJsonToFile("/data.txt", updateRuleConfig);
     writeRuleId(ruleConfigArray);
     updateScene(sceneNum);
+    reqId = getReqId(message);
     advanceStatusCmd(bridgeKey, reqId, updateRuleConfig, output, macAddress, machc);
     client.publish(statusTopic, output);
   }
@@ -438,6 +443,7 @@ void uiTask(void *pvParameters)
 void setup() {
   Serial.begin(115200);
   spiffsInit();
+  randomSeed(micros());
 
   gfx->begin(-1);
   gfx->fillScreen(BLACK);
@@ -499,7 +505,7 @@ void setup() {
   sprintf(statusTopic, "component/deviceIP/%s/status", macAddress);
   sprintf(controlTopic, "component/deviceIP/%s/control", macAddress);
   sprintf(configTopic, "component/deviceIP/%s/config", macAddress);
-  sprintf(deviceTopic, "component/deviceIP/config");
+  sprintf(deviceTopic, "component/deviceIP/+");
 
   if(!MDNS.begin("esp32")) {
     ESP_LOGE("main", "error starring mDNS!");
@@ -535,12 +541,11 @@ void loop() {
 
   if(now - lastTime > 600000) // Send status periodically after 10 minutes
   {
+    randomReqId( 15, reqId);
     responseGetStatus(bridgeKey, reqId, output, macAddress);
     client.publish(statusTopic, output);
     String ruleConfig;
     ruleConfig = readJsonFromFile("/data.txt");
-    advanceStatusCmd(bridgeKey, reqId, ruleConfig, output, macAddress, machc);
-    client.publish(statusTopic, output);
     lastTime = now;
   }
   vTaskDelay(pdMS_TO_TICKS(100));
@@ -562,11 +567,7 @@ void init_lv_group() {
 }
 
 void mDNSService()
-{
-  // MDNS.addService(SERVICE_NAME, SERVICE_PROTOCOL, SERVICE_PORT);
-  // MDNS.addServiceTxt(SERVICE_NAME, SERVICE_PROTOCOL, "manufacturer", "LUMI");
-  // MDNS.addServiceTxt(SERVICE_NAME, SERVICE_PROTOCOL, "mac", "f4:12:fa:cf:4e:b4");
-  
+{ 
   int nrOfServices = MDNS.queryService("lumismarthome", SERVICE_PROTOCOL);
   if (nrOfServices == 0) {
     ESP_LOGE("main", "No services were found.");
@@ -679,7 +680,9 @@ void sceneModify(lv_obj_t* ui, lv_obj_t* ui_label, int num)
   icon = readIconKeyValue("/ruleId.txt", num);
   name = readNameValue("/ruleId.txt", num);
   int iconValue = std::stoi(icon) + 1;
+
   _ui_state_modify(ui, LV_STATE_DISABLED, enableStatus);
+  
   lv_obj_set_style_bg_img_src( ui, image_array[iconValue], LV_PART_MAIN | LV_STATE_DEFAULT );
   lv_label_set_text(ui_label, name);
 
@@ -688,24 +691,23 @@ void sceneModify(lv_obj_t* ui, lv_obj_t* ui_label, int num)
 }
 
 void updateScene(uint8_t num) {
-  lv_obj_t* ui_scenes[] = {ui_scene1, ui_scene2, ui_scene3, ui_scene4, ui_scene5, ui_scene6, ui_scene7, ui_scene8, ui_scene9, ui_scene10}; // can fix more scenes
-  lv_obj_t* ui_canhs[] = {ui_canh1, ui_canh2, ui_canh3, ui_canh4, ui_canh5, ui_canh6, ui_canh7, ui_canh8, ui_canh9, ui_canh10};
+  lv_obj_t* ui_scenes[MAX_SCENE] = {ui_scene1, ui_scene2, ui_scene3, ui_scene4, ui_scene5, ui_scene6, ui_scene7, ui_scene8, ui_scene9, ui_scene10}; // can fix more scenes
+  lv_obj_t* ui_canhs[MAX_SCENE] = {ui_canh1, ui_canh2, ui_canh3, ui_canh4, ui_canh5, ui_canh6, ui_canh7, ui_canh8, ui_canh9, ui_canh10};
 
-  for(uint8_t i = num; i < MAX_SCENE; i++) //i < max_scene
+  for(uint8_t i = num; i < MAX_SCENE; i++) //i < max_scene ẩn obj của cảnh bị xoá
   {
-    ESP_LOGE("main", "scene number: %d", i+1);
-    _ui_flag_modify(ui_scenes[i], LV_OBJ_FLAG_HIDDEN, 0);
+    _ui_flag_modify(ui_scenes[i], LV_OBJ_FLAG_HIDDEN, _UI_MODIFY_FLAG_ADD); //ẩn,xoá cảnh 
   }
-  for(uint8_t i = 0; i < num; i++)
+  for (uint8_t i = 0; i < num; i++) //quét một lượt ds cảnh và sửa lại icon, tên, ...
   {
-    _ui_flag_modify(ui_scenes[i], LV_OBJ_FLAG_HIDDEN, 1);
+    _ui_flag_modify(ui_scenes[i], LV_OBJ_FLAG_HIDDEN, _UI_MODIFY_FLAG_REMOVE); //hiển thị cảnh
   }
   for (uint8_t i = 0; i < num; i++) {
     ESP_LOGE("main", "i = %d", i);
     ESP_LOGE("main", "num = %d", num);
     sceneModify(ui_scenes[i], ui_canhs[i], i + 1);
   }
-  lv_obj_set_y( ui_back, num*480 );
+  lv_obj_set_y( ui_back, num*480 ); //toạ độ nút back lùi bằng số cảnh*480 điểm ảnh
   if(num == 0)
   {
     lv_obj_set_style_bg_img_src(ui_scenes[0], NULL, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -755,12 +757,14 @@ void ui_event_button(lv_event_t *e, ButtonStatus& btn_status, const char *ep) {
   if (event_code == LV_EVENT_VALUE_CHANGED) {
     if (lv_obj_has_state(target, LV_STATE_CHECKED)) {
       if (btn_status == OFF) {
+        randomReqId( 15, reqId);
         generateJsonCmdStatus(bridgeKey, reqId, output, macAddress, ep, true);
         client.publish(statusTopic, output);
         btn_status = ON;
       }
     } else {
       if (btn_status == ON) {
+        randomReqId( 15, reqId);
         generateJsonCmdStatus(bridgeKey, reqId, output, macAddress, ep, false);
         client.publish(statusTopic, output);
         btn_status = OFF;
@@ -796,6 +800,7 @@ void ui_event_scene(lv_event_t *e, int num)
   if(event_code == LV_EVENT_CLICKED && num <= sceneNum)
   {
       const char* ruleId = readRuleIDValue("/ruleId.txt", num);
+      randomReqId( 15, reqId);
       activeRuleCmd(reqId, output, ruleId);
       client.publish(controlTopic, output);
   }
@@ -890,6 +895,7 @@ void uiGroup1()
 void uiGroup2()
 {
   lv_group_remove_all_objs(lv_group);
+  lv_group_add_obj(lv_group, ui_back);
   lv_group_add_obj(lv_group, ui_scene1);
   lv_group_add_obj(lv_group, ui_scene2);
   lv_group_add_obj(lv_group, ui_scene3);
@@ -900,5 +906,4 @@ void uiGroup2()
   lv_group_add_obj(lv_group, ui_scene8);
   lv_group_add_obj(lv_group, ui_scene9);
   lv_group_add_obj(lv_group, ui_scene10);
-  lv_group_add_obj(lv_group, ui_back);
 }
